@@ -1,0 +1,99 @@
+#!/bin/bash
+# asahi-kbd-fn-remap — toggle Fn-row behavior (media keys vs F1-F12)
+# usage: asahi-kbd-fn-remap {status|set MODE|--json}
+#        MODE: media (Fn defaults to media), fn (Fn defaults to F1-F12), auto
+set -euo pipefail
+
+SYSFS="/sys/module/hid_apple/parameters/fnmode"
+MODPROBE_CONF="/etc/modprobe.d/hid_apple.conf"
+
+# fnmode values (hid_apple):
+#   0 = media keys (Fn+F1 = F1)
+#   1 = fkeyslast
+#   2 = F1-F12 by default (Fn+F1 = media)
+#   3 = auto
+mode_to_num() {
+    case "$1" in
+        media) echo 0 ;;
+        fn|fkeys|fkeysfirst) echo 2 ;;
+        auto) echo 3 ;;
+        *) return 1 ;;
+    esac
+}
+num_to_mode() {
+    case "$1" in
+        0) echo "media keys" ;;
+        1) echo "fkeyslast" ;;
+        2) echo "F1-F12" ;;
+        3) echo "auto" ;;
+        *) echo "unknown" ;;
+    esac
+}
+
+cmd_status() {
+    if [ ! -e "$SYSFS" ]; then
+        if [ "${1:-}" = "--json" ]; then
+            echo '{"available":false,"mode":null}'
+        else
+            echo "not available"
+            echo "  /sys/module/hid_apple/parameters/fnmode does not exist"
+            echo "  (Apple keyboard may not be bound to hid_apple on this system)"
+        fi
+        return
+    fi
+    local num
+    num=$(cat "$SYSFS" 2>/dev/null || echo "")
+    if [ "${1:-}" = "--json" ]; then
+        printf '{"available":true,"mode":%s,"description":"%s"}\n' \
+            "${num:--1}" "$(num_to_mode "$num")"
+    else
+        echo "current: $(num_to_mode "$num") ($num)"
+        echo "sysfs:   $SYSFS"
+        if [ -f "$MODPROBE_CONF" ]; then
+            echo "persist: $MODPROBE_CONF ($(cat "$MODPROBE_CONF"))"
+        else
+            echo "persist: (not configured; setting resets on reboot)"
+        fi
+    fi
+}
+
+cmd_set() {
+    local mode="${1:-}"
+    [ -z "$mode" ] && { echo "usage: set {media|fn|auto}" >&2; exit 1; }
+    local num
+    num=$(mode_to_num "$mode") || { echo "invalid mode: $mode" >&2; exit 1; }
+
+    if [ ! -e "$SYSFS" ]; then
+        echo "error: $SYSFS not available" >&2
+        exit 1
+    fi
+
+    echo "$num" | sudo tee "$SYSFS" >/dev/null
+    echo "set to $(num_to_mode "$num") ($num)"
+
+    # Persist via modprobe.d (optional, asks)
+    printf 'persist across reboots via %s? [y/N] ' "$MODPROBE_CONF"
+    read -r ans || ans=""
+    if [ "$ans" = "y" ] || [ "$ans" = "Y" ]; then
+        echo "options hid_apple fnmode=$num" | sudo tee "$MODPROBE_CONF" >/dev/null
+        echo "persisted (will apply on next boot; run 'sudo modprobe -r hid_apple && sudo modprobe hid_apple' to apply now)"
+    fi
+}
+
+case "${1:-}" in
+    status)  shift; cmd_status "${1:-}" ;;
+    set)     shift; cmd_set "${1:-}" ;;
+    --json)  cmd_status --json ;;
+    *)
+        cat <<'USAGE'
+asahi-kbd-fn-remap — toggle Fn-row behavior
+
+  asahi-kbd-fn-remap status [--json]
+  asahi-kbd-fn-remap set {media|fn|auto}
+
+  media  = F1-F12 emit media keys, Fn+F1 = F1
+  fn     = F1-F12 emit F-keys, Fn+F1 = media
+  auto   = kernel decides based on usage (kernel 6.x+)
+USAGE
+        ;;
+esac

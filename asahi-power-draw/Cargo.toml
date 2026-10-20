@@ -1,12 +1,10 @@
 [package]
-name = "kbd-backlight"
+name = "asahi-power-draw"
 version.workspace = true
 edition.workspace = true
-
 [[bin]]
-name = "kbd-backlight"
+name = "asahi-power-draw"
 path = "src/main.rs"
-
 [dependencies]
 asahi-core.workspace = true
 ratatui.workspace = true

@@ -2,15 +2,22 @@
 resolver = "2"
 members = [
     "asahi-core",
-    "kbd-backlight",
-    "battery-limiter",
+    "asahi-tui",
     "net-restarter",
     "sys-monitor",
-    "asahi-tui",
+    "asahi-battery-health",
+    "asahi-charge-daemon",
+    "asahi-power-draw",
+    "asahi-sleep-log",
+    "asahi-gtk",
+    "asahi-notify-hub",
+    "asahi-kernel-manager",
+    "asahi-trackpad",
+    "asahi-priv-daemon",
 ]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 [workspace.dependencies]

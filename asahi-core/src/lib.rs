@@ -176,3 +176,13 @@ fn read_u32(path: &str) -> Result<u32, AsahiError> {
         .parse()
         .map_err(|e| AsahiError::InvalidValue(format!("{path}: {e}")))
 }
+
+pub mod charge;
+pub mod sysmon;
+pub mod history;
+
+pub mod notify_config;
+
+pub mod trackpad_config;
+
+pub mod priv_daemon;

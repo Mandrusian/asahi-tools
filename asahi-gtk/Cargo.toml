@@ -1,0 +1,16 @@
+[package]
+name = "asahi-gtk"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "asahi-gtk"
+path = "src/main.rs"
+
+[dependencies]
+asahi-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+gtk = { package = "gtk4", version = "0.9", features = ["v4_16"] }
+libadwaita = { version = "0.7", features = ["v1_6"] }
+glib = "0.20"

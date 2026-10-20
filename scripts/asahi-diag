@@ -1,0 +1,105 @@
+#!/bin/bash
+# asahi-diag — collect a diagnostic bundle for bug reports
+set -euo pipefail
+
+case "${1:-}" in
+    -h|--help)
+        cat <<'USAGE'
+asahi-diag [output-dir]
+
+Collects a diagnostic bundle to <output-dir>/asahi-diag-TIMESTAMP.tar.gz.
+Default output-dir: /tmp
+Useful to attach to Asahi Linux bug reports.
+USAGE
+        exit 0
+        ;;
+    -*)  echo "unknown flag: $1 (use -h for help)" >&2; exit 1 ;;
+esac
+
+OUT="${1:-/tmp}"
+TS=$(date +%Y%m%d-%H%M%S)
+DIR="$OUT/asahi-diag-$TS"
+mkdir -p "$DIR"
+
+save() {
+    local name="$1"; shift
+    { "$@" 2>&1 || echo "failed: $*"; } > "$DIR/$name"
+}
+
+save uname.txt                uname -a
+save uptime.txt               cat /proc/uptime
+save cmdline.txt              cat /proc/cmdline
+save os-release.txt           cat /etc/os-release
+save dmesg-errors.txt         bash -c 'dmesg --level=err,warn 2>/dev/null || dmesg | tail -200'
+save journal-errors.txt       journalctl -p err -b --no-pager
+save journal-asahi.txt        journalctl -b --no-pager -g asahi 2>/dev/null || echo "no matches"
+save journal-lid.txt          journalctl -b --no-pager -g -i lid 2>/dev/null || echo "no matches"
+save kernel-modules.txt       lsmod
+save usb.txt                  bash -c 'lsusb 2>/dev/null || echo "lsusb not installed"'
+save pci.txt                  bash -c 'lspci -nn 2>/dev/null || echo "lspci not installed"'
+save hwmon.txt                bash -c '
+for d in /sys/class/hwmon/hwmon*/; do
+    [ -f "$d/name" ] || continue
+    echo "== $d ($(cat "$d/name")) =="
+    for f in "$d"*_input; do
+        [ -f "$f" ] && echo "  $(basename "$f"): $(cat "$f" 2>/dev/null || echo "?")"
+    done
+done'
+save power-supply.txt         bash -c '
+for d in /sys/class/power_supply/*/; do
+    [ -d "$d" ] || continue
+    echo "== $d =="
+    for f in "$d"*; do
+        [ -f "$f" ] && echo "  $(basename "$f"): $(cat "$f" 2>/dev/null || echo "?")"
+    done
+done'
+save lid-state.txt            bash -c '
+for f in /proc/acpi/button/lid/*/state; do
+    [ -f "$f" ] && echo "$f: $(cat "$f")"
+done 2>/dev/null || echo "no lid device found"'
+save firmware-version.txt     bash -c '
+for p in /proc/device-tree/chosen/*firmware* /proc/device-tree/chosen/asahi,uboot*; do
+    [ -f "$p" ] && echo "$p: $(tr -d "\0" < "$p")"
+done 2>/dev/null || echo "no firmware-version properties"'
+save df.txt                   df -hT
+save free.txt                 free -h
+save loadavg.txt              cat /proc/loadavg
+save dnf-history.txt          bash -c 'dnf history list --reverse 2>/dev/null | tail -20'
+save rpm-kernels.txt          bash -c 'rpm -qa --qf "%{NAME} %{VERSION}-%{RELEASE}\n" | grep -E "^kernel" || echo "no kernels"'
+save systemd-failed.txt       systemctl --failed --no-pager 2>/dev/null || echo "n/a"
+save systemd-user-failed.txt  systemctl --user --failed --no-pager 2>/dev/null || echo "n/a"
+save selinux-mode.txt         bash -c 'getenforce 2>/dev/null || echo "selinux not installed"'
+
+if command -v asahi-diagnose >/dev/null 2>&1; then
+    save asahi-diagnose.txt   asahi-diagnose
+fi
+
+cat > "$DIR/README.txt" <<EOF
+Asahi diagnostic bundle
+Generated: $(date -Iseconds)
+Hostname:  $(hostname)
+Kernel:    $(uname -r)
+Distro:    $(grep PRETTY_NAME /etc/os-release | cut -d= -f2- | tr -d '"')
+
+What's inside:
+  uname.txt            — kernel version and arch
+  dmesg-errors.txt     — kernel errors/warnings
+  journal-errors.txt   — systemd journal errors (current boot)
+  journal-asahi.txt    — journal lines mentioning asahi
+  journal-lid.txt      — journal lines mentioning lid (debug lid issues)
+  hwmon.txt            — all sensor readings
+  power-supply.txt     — battery/charger state
+  lid-state.txt        — lid switch state at capture time
+  firmware-version.txt — U-Boot / firmware version
+  rpm-kernels.txt      — installed kernel packages
+  systemd-failed.txt   — failed system units
+  asahi-diagnose.txt   — output of asahi-diagnose if installed
+
+Report at: https://github.com/AsahiLinux/asahi/issues
+Attach:     $(basename "$OUT")/$(basename "$DIR").tar.gz
+EOF
+
+TARBALL="$OUT/asahi-diag-$TS.tar.gz"
+tar -czf "$TARBALL" -C "$OUT" "asahi-diag-$TS"
+rm -rf "$DIR"
+echo "$TARBALL"

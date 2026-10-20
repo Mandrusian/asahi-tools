@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Asahi Settings
+GenericName=System Settings
+Comment=Control battery, thermal, power, display, trackpad and services
+Exec=asahi-gtk
+Icon=asahi-tools
+Terminal=false
+Categories=System;Settings;HardwareSettings;Monitor;
+Keywords=asahi;battery;thermal;fan;trackpad;display;power;
+StartupNotify=true
+StartupWMClass=asahi-gtk

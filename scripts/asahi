@@ -1,0 +1,83 @@
+#!/bin/bash
+# asahi — unified CLI dispatcher for asahi-tools
+set -eu
+
+usage() {
+    cat <<'U'
+asahi — unified CLI for asahi-tools
+
+    asahi battery           battery health TUI
+    asahi battery status    charge daemon state
+    asahi battery override 100 2h
+    asahi battery cancel
+    asahi thermal           temperatures + fan TUI
+    asahi power             live power rails
+    asahi trackpad          pressure visualizer
+    asahi trackpad calibrate
+    asahi trackpad on|off   enable/disable force-click daemon
+    asahi kernel            kernel manager TUI
+    asahi diag              diagnostic bundle
+    asahi snapshot [label]  btrfs snapshot
+    asahi display [mode]    internal|external|extend|mirror
+    asahi wifi-log [cmd]    start|stop|report
+    asahi lid [cmd]         status|set-action X
+    asahi sensors           list hwmon inputs
+    asahi services          systemctl status of all daemons
+    asahi version
+U
+}
+
+find_bin() {
+    for p in "$HOME/.local/bin/$1" "/usr/local/bin/$1" "target/release/$1"; do
+        [ -x "$p" ] && { echo "$p"; return 0; }
+    done
+    command -v "$1" 2>/dev/null || return 1
+}
+
+cmd_battery() {
+    case "${1:-}" in
+        "") exec "$(find_bin asahi-battery-health)" ;;
+        status) exec "$(find_bin asahi-charge-daemon)" status ;;
+        override) shift; exec "$(find_bin asahi-charge-daemon)" override "$@" ;;
+        cancel) exec "$(find_bin asahi-charge-daemon)" cancel ;;
+        target) shift; exec "$(find_bin asahi-charge-daemon)" set-target "$@" ;;
+        *) echo "asahi battery: unknown subcommand: $1" >&2; exit 1 ;;
+    esac
+}
+
+cmd_trackpad() {
+    case "${1:-}" in
+        "") exec "$(find_bin asahi-trackpad-viz)" ;;
+        calibrate) exec "$(find_bin asahi-force-click)" --calibrate ;;
+        on)  sudo systemctl enable --now asahi-force-click ;;
+        off) sudo systemctl disable --now asahi-force-click ;;
+        *) echo "asahi trackpad: unknown: $1" >&2; exit 1 ;;
+    esac
+}
+
+cmd_services() {
+    for s in asahi-priv-daemon asahi-charge-daemon asahi-sysmon-daemon asahi-force-click; do
+        printf "  %-25s %s\n" "$s" "$(systemctl is-active "$s" 2>/dev/null || echo unknown)"
+    done
+    for s in asahi-notify-hub asahi-lid; do
+        printf "  %-25s %s (user)\n" "$s" "$(systemctl --user is-active "$s" 2>/dev/null || echo unknown)"
+    done
+}
+
+case "${1:-}" in
+    battery)  shift; cmd_battery "$@" ;;
+    thermal)  exec "$(find_bin sys-monitor)" ;;
+    power)    exec "$(find_bin asahi-power-draw)" ;;
+    trackpad) shift; cmd_trackpad "$@" ;;
+    kernel)   exec "$(find_bin asahi-kernel-manager)" ;;
+    diag)     exec "$(find_bin asahi-diag)" ;;
+    snapshot) shift; exec "$(find_bin asahi-snapshot)" "${1:-before-update}" ;;
+    display)  shift; exec "$(find_bin asahi-display)" "${1:-status}" ;;
+    wifi-log) shift; exec "$(find_bin asahi-wifi-log)" "${@:-status}" ;;
+    lid)      shift; exec "$(find_bin asahi-lid)" "${@:-status}" ;;
+    sensors)  exec "$(find_bin asahi-sensor-explorer)" ;;
+    services) cmd_services ;;
+    version)  echo "asahi-tools 0.3.0" ;;
+    ""|-h|--help|help) usage ;;
+    *) echo "asahi: unknown command: $1" >&2; usage; exit 1 ;;
+esac

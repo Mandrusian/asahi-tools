@@ -1,0 +1,70 @@
+#!/bin/bash
+# asahi-completions — generate shell completions for the asahi command
+set -eu
+
+SHELL_NAME="${1:-bash}"
+
+COMMANDS="battery thermal power trackpad kernel diag snapshot display wifi-log lid sensors services version"
+BATTERY_SUB="status override cancel target"
+TRACKPAD_SUB="calibrate on off"
+DISPLAY_SUB="internal external extend mirror status"
+LID_SUB="status set-action run test"
+WIFI_SUB="start stop status report clear"
+
+case "$SHELL_NAME" in
+bash)
+    cat <<BASH
+_asahi() {
+    local cur prev
+    cur="\${COMP_WORDS[COMP_CWORD]}"
+    prev="\${COMP_WORDS[COMP_CWORD-1]}"
+    if [ "\$COMP_CWORD" -eq 1 ]; then
+        COMPREPLY=(\$(compgen -W "$COMMANDS" -- "\$cur"))
+        return
+    fi
+    case "\${COMP_WORDS[1]}" in
+        battery)  COMPREPLY=(\$(compgen -W "$BATTERY_SUB" -- "\$cur")) ;;
+        trackpad) COMPREPLY=(\$(compgen -W "$TRACKPAD_SUB" -- "\$cur")) ;;
+        display)  COMPREPLY=(\$(compgen -W "$DISPLAY_SUB" -- "\$cur")) ;;
+        lid)      COMPREPLY=(\$(compgen -W "$LID_SUB" -- "\$cur")) ;;
+        wifi-log) COMPREPLY=(\$(compgen -W "$WIFI_SUB" -- "\$cur")) ;;
+    esac
+}
+complete -F _asahi asahi
+BASH
+    ;;
+zsh)
+    cat <<ZSH
+#compdef asahi
+_asahi() {
+    local -a cmds
+    cmds=($COMMANDS)
+    _describe 'command' cmds
+    case \$words[2] in
+        battery)  _values 'battery' $BATTERY_SUB ;;
+        trackpad) _values 'trackpad' $TRACKPAD_SUB ;;
+        display)  _values 'display' $DISPLAY_SUB ;;
+        lid)      _values 'lid' $LID_SUB ;;
+        wifi-log) _values 'wifi-log' $WIFI_SUB ;;
+    esac
+}
+_asahi "\$@"
+ZSH
+    ;;
+fish)
+    cat <<FISH
+for cmd in $COMMANDS
+    complete -c asahi -n "not __fish_seen_subcommand_from \$cmd" -a \$cmd
+end
+complete -c asahi -n "__fish_seen_subcommand_from battery"  -a "$BATTERY_SUB"
+complete -c asahi -n "__fish_seen_subcommand_from trackpad" -a "$TRACKPAD_SUB"
+complete -c asahi -n "__fish_seen_subcommand_from display"  -a "$DISPLAY_SUB"
+complete -c asahi -n "__fish_seen_subcommand_from lid"      -a "$LID_SUB"
+complete -c asahi -n "__fish_seen_subcommand_from wifi-log" -a "$WIFI_SUB"
+FISH
+    ;;
+*)
+    echo "usage: asahi-completions {bash|zsh|fish}" >&2
+    exit 1
+    ;;
+esac

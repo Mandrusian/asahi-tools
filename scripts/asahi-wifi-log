@@ -1,0 +1,130 @@
+#!/bin/bash
+# asahi-wifi-log — record WiFi disconnects with RSSI context
+# usage: asahi-wifi-log {start|stop|status|report [N]|clear|--json}
+set -euo pipefail
+
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/asahi-tools"
+LOG="$DATA/wifi-log.jsonl"
+PIDFILE="$DATA/wifi-log.pid"
+INTERVAL="${WIFI_LOG_INTERVAL:-10}"
+
+ensure_dir() { mkdir -p "$DATA"; }
+
+gateway() {
+    ip route show default 2>/dev/null | awk '/default/ {print $3; exit}'
+}
+
+wifi_state() {
+    nmcli -t -f STATE general 2>/dev/null | head -1
+}
+
+rssi() {
+    nmcli -t -f IN-USE,SIGNAL dev wifi 2>/dev/null | awk -F: '/^\*/ {print $2; exit}'
+}
+
+ssid() {
+    nmcli -t -f IN-USE,SSID dev wifi 2>/dev/null | awk -F: '/^\*/ {print $2; exit}'
+}
+
+log_event() {
+    ensure_dir
+    local ts state gw rssi_v ssid_v
+    ts=$(date -Iseconds)
+    state=$(wifi_state)
+    gw=$(gateway || echo "")
+    rssi_v=$(rssi || echo "")
+    ssid_v=$(ssid || echo "")
+    printf '{"ts":"%s","state":"%s","gateway":"%s","rssi":%s,"ssid":"%s"}\n' \
+        "$ts" "$state" "$gw" "${rssi_v:--1}" "$ssid_v" >> "$LOG"
+}
+
+cmd_start() {
+    if [ -f "$PIDFILE" ] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+        echo "already running (pid $(cat "$PIDFILE"))"
+        return 0
+    fi
+    ensure_dir
+    (
+        last_state=""
+        while true; do
+            cur=$(wifi_state || echo "unknown")
+            if [ "$cur" != "$last_state" ]; then
+                if [ -n "$last_state" ]; then
+                    log_event
+                fi
+                last_state="$cur"
+            fi
+            sleep "$INTERVAL"
+        done
+    ) &
+    echo $! > "$PIDFILE"
+    echo "started (pid $!, logging to $LOG every ${INTERVAL}s on state change)"
+}
+
+cmd_stop() {
+    if [ -f "$PIDFILE" ]; then
+        pid=$(cat "$PIDFILE")
+        kill "$pid" 2>/dev/null || true
+        rm -f "$PIDFILE"
+        echo "stopped"
+    else
+        echo "not running"
+    fi
+}
+
+cmd_status() {
+    local state rssi_v gw ssid_v
+    state=$(wifi_state || echo unknown)
+    rssi_v=$(rssi || echo "-")
+    gw=$(gateway || echo "(none)")
+    ssid_v=$(ssid || echo "(none)")
+    if [ "${1:-}" = "--json" ]; then
+        printf '{"state":"%s","ssid":"%s","rssi":%s,"gateway":"%s"}\n' \
+            "$state" "$ssid_v" "${rssi_v:--1}" "$gw"
+    else
+        echo "state:   $state"
+        echo "ssid:    $ssid_v"
+        echo "rssi:    $rssi_v"
+        echo "gateway: $gw"
+        [ -f "$LOG" ] && echo "log:     $LOG ($(wc -l < "$LOG") events)"
+    fi
+}
+
+cmd_report() {
+    local n="${1:-20}"
+    [ -f "$LOG" ] || { echo "no log yet"; return; }
+    echo "Last $n state changes:"
+    echo
+    tail -n "$n" "$LOG" | while IFS= read -r line; do
+        ts=$(echo "$line" | sed -nE 's/.*"ts":"([^"]+)".*/\1/p')
+        state=$(echo "$line" | sed -nE 's/.*"state":"([^"]+)".*/\1/p')
+        rssi_v=$(echo "$line" | sed -nE 's/.*"rssi":(-?[0-9]+).*/\1/p')
+        ssid_v=$(echo "$line" | sed -nE 's/.*"ssid":"([^"]*)".*/\1/p')
+        printf '  %s  %-20s  rssi=%-4s  %s\n' "$ts" "$state" "$rssi_v" "$ssid_v"
+    done
+}
+
+cmd_clear() {
+    rm -f "$LOG"
+    echo "log cleared"
+}
+
+case "${1:-}" in
+    start)   cmd_start ;;
+    stop)    cmd_stop ;;
+    status)  shift; cmd_status "${1:-}" ;;
+    report)  shift; cmd_report "${1:-20}" ;;
+    clear)   cmd_clear ;;
+    --json)  cmd_status --json ;;
+    *)
+        cat <<'USAGE'
+asahi-wifi-log — log WiFi drops with RSSI context
+
+  asahi-wifi-log start           run in background (every 10s or $WIFI_LOG_INTERVAL)
+  asahi-wifi-log stop
+  asahi-wifi-log status [--json]
+  asahi-wifi-log report [N]      show last N state changes (default 20)
+  asahi-wifi-log clear
+USAGE
+        ;;
+esac

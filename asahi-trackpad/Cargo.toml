@@ -1,0 +1,17 @@
+[package]
+name = "asahi-trackpad"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "asahi-trackpad-viz"
+path = "src/bin/viz.rs"
+
+[[bin]]
+name = "asahi-force-click"
+path = "src/bin/force_click.rs"
+
+[dependencies]
+asahi-core.workspace = true
+evdev = "0.12"
+eframe = { version = "0.29", default-features = false, features = ["default_fonts", "glow", "wayland", "x11"] }

@@ -1,0 +1,209 @@
+#!/bin/bash
+# asahi-lid — lid close handler for compositors that don't manage it (niri, hyprland, sway, i3)
+# usage: asahi-lid {run|status|set-action X|set-delay N|test|--json}
+set -euo pipefail
+
+CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/asahi-tools/lid.conf"
+DEFAULTS=$'LID_CLOSE_ACTION=lock\nLID_CLOSE_DELAY=5\nLID_OPEN_ACTION=ignore\nLID_CLOSE_CUSTOM='
+
+ensure_config() {
+    [ -f "$CONFIG" ] && return
+    mkdir -p "$(dirname "$CONFIG")"
+    printf '%s\n' "$DEFAULTS" > "$CONFIG"
+}
+
+load_config() {
+    ensure_config
+    # shellcheck disable=SC1090
+    source "$CONFIG"
+}
+
+upower_lid() {
+    command -v busctl >/dev/null 2>&1 || return 1
+    local r
+    r=$(busctl --system get-property org.freedesktop.UPower /org/freedesktop/UPower \
+        org.freedesktop.UPower LidIsClosed 2>/dev/null) || return 1
+    case "$r" in
+        "b true")  echo closed ;;
+        "b false") echo open ;;
+        *)         return 1 ;;
+    esac
+}
+
+acpi_lid() {
+    for p in /proc/acpi/button/lid/LID0/state /proc/acpi/button/lid/LID/state; do
+        if [ -f "$p" ]; then
+            if grep -q closed "$p"; then echo closed; else echo open; fi
+            return 0
+        fi
+    done
+    return 1
+}
+
+read_lid() {
+    # Apple Silicon: UPower LidIsClosed property (kernels >= 6.10 expose SW_LID)
+    upower_lid && return
+    # Fallback for x86 / systems exposing ACPI lid
+    acpi_lid && return
+    echo unknown
+}
+
+cmd_probe() {
+    echo "── Lid source detection ──"
+
+    echo
+    echo "UPower:"
+    if command -v busctl >/dev/null 2>&1; then
+        local r
+        r=$(busctl --system get-property org.freedesktop.UPower /org/freedesktop/UPower \
+            org.freedesktop.UPower LidIsClosed 2>/dev/null || echo "(no property)")
+        echo "  LidIsClosed = $r"
+    else
+        echo "  busctl not installed (install systemd)"
+    fi
+
+    echo
+    echo "ACPI paths:"
+    local found_acpi=0
+    for p in /proc/acpi/button/lid/LID0/state /proc/acpi/button/lid/LID/state; do
+        if [ -f "$p" ]; then
+            echo "  ✓ $p: $(cat "$p")"
+            found_acpi=1
+        fi
+    done
+    [ "$found_acpi" = "0" ] && echo "  ✗ no ACPI lid paths"
+
+    echo
+    echo "Input devices with SW_LID (via /proc/bus/input/devices):"
+    if [ -f /proc/bus/input/devices ]; then
+        local found=0
+        local name="" handlers=""
+        while IFS= read -r line; do
+            case "$line" in
+                N:*Name=*)   name="${line#*Name=}" ;;
+                H:*Handlers*) handlers="${line#*Handlers=}" ;;
+                B:*SW=*)
+                    local bits="${line#*SW=}"
+                    if [ -n "$name" ] && [ -n "$handlers" ]; then
+                        echo "  $name — $handlers"
+                        echo "    SW bits: $bits"
+                        found=1
+                    fi
+                    name="" handlers=""
+                    ;;
+            esac
+        done < /proc/bus/input/devices
+        [ "$found" = "0" ] && echo "  (no devices with SW= capability)"
+    fi
+
+    echo
+    echo "by-path lid/switch symlinks:"
+    ls -la /dev/input/by-path/*lid* /dev/input/by-path/*switch* 2>/dev/null || echo "  (none)"
+
+    echo
+    echo "Current reading: $(read_lid)"
+}
+
+
+
+do_close() {
+    case "$LID_CLOSE_ACTION" in
+        lock)      loginctl lock-session ;;
+        suspend)   loginctl lock-session; sleep "$LID_CLOSE_DELAY"; systemctl suspend ;;
+        hibernate) loginctl lock-session; sleep "$LID_CLOSE_DELAY"; systemctl hibernate ;;
+        ignore)    ;;
+        custom)    bash -c "$LID_CLOSE_CUSTOM" ;;
+        *)         echo "unknown action: $LID_CLOSE_ACTION" >&2 ;;
+    esac
+}
+
+do_open() {
+    [ "$LID_OPEN_ACTION" = custom ] && bash -c "$LID_OPEN_CUSTOM" || true
+}
+
+cmd_run() {
+    load_config
+    local prev
+    prev=$(read_lid)
+    if [ "$prev" = "unknown" ]; then
+        echo "asahi-lid: no lid source detected; run 'asahi-lid probe' for details" >&2
+        exit 1
+    fi
+    echo "asahi-lid: watching lid (action=$LID_CLOSE_ACTION, delay=${LID_CLOSE_DELAY}s, initial=$prev)"
+    while true; do
+        sleep 1
+        local cur
+        cur=$(read_lid)
+        if [ "$cur" != "$prev" ]; then
+            echo "asahi-lid: lid -> $cur"
+            case "$cur" in
+                closed) do_close ;;
+                open)   do_open ;;
+            esac
+            prev="$cur"
+        fi
+    done
+}
+
+cmd_status() {
+    load_config
+    local state
+    state=$(read_lid)
+    if [ "${1:-}" = "--json" ]; then
+        printf '{"lid":"%s","action":"%s","delay":%s,"on_open":"%s","config":"%s"}\n' \
+            "$state" "$LID_CLOSE_ACTION" "$LID_CLOSE_DELAY" "$LID_OPEN_ACTION" "$CONFIG"
+    else
+        echo "lid:     $state"
+        echo "action:  $LID_CLOSE_ACTION"
+        echo "delay:   ${LID_CLOSE_DELAY}s"
+        echo "on open: $LID_OPEN_ACTION"
+        echo "config:  $CONFIG"
+    fi
+}
+
+cmd_set_action() {
+    local action="${1:-}"
+    case "$action" in
+        lock|suspend|hibernate|ignore|custom) ;;
+        *) echo "usage: set-action {lock|suspend|hibernate|ignore|custom}" >&2; exit 1 ;;
+    esac
+    ensure_config
+    sed -i "s/^LID_CLOSE_ACTION=.*/LID_CLOSE_ACTION=$action/" "$CONFIG"
+    echo "action -> $action"
+}
+
+cmd_set_delay() {
+    local n="${1:-5}"
+    [[ "$n" =~ ^[0-9]+$ ]] || { echo "delay must be an integer" >&2; exit 1; }
+    ensure_config
+    sed -i "s/^LID_CLOSE_DELAY=.*/LID_CLOSE_DELAY=$n/" "$CONFIG"
+    echo "delay -> ${n}s"
+}
+
+cmd_test() {
+    load_config
+    echo "simulating close (action=$LID_CLOSE_ACTION, delay=${LID_CLOSE_DELAY}s)..."
+    do_close
+}
+
+case "${1:-}" in
+    run)         cmd_run ;;
+    status)      shift; cmd_status "${1:-}" ;;
+    set-action)  shift; cmd_set_action "$@" ;;
+    set-delay)   shift; cmd_set_delay "$@" ;;
+    test)        cmd_test ;;
+    probe)       cmd_probe ;;
+    --json)      cmd_status --json ;;
+    *)
+        cat <<'USAGE'
+asahi-lid — lid close handler
+
+  asahi-lid run                start daemon (systemd calls this)
+  asahi-lid status [--json]    show state + config
+  asahi-lid set-action X       lock | suspend | hibernate | ignore | custom
+  asahi-lid set-delay N        seconds before suspend
+  asahi-lid test               simulate close
+  asahi-lid probe              diagnose lid source (UPower/ACPI/input)
+USAGE
+        ;;
+esac

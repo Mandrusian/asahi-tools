@@ -165,6 +165,16 @@ fn handle_client(
 }
 
 fn handle_request(req: &Request, hwmon: &str, state: &Arc<Mutex<State>>) -> serde_json::Value {
+    // If the hwmon path went stale (module reloaded), re-find it.
+    let hwmon = if Path::new(hwmon).exists() {
+        hwmon.to_string()
+    } else {
+        match find_fan_hwmon() {
+            Some(h) => h,
+            None => return serde_json::json!({"ok": false, "error": "hwmon not found"}),
+        }
+    };
+    let hwmon = hwmon.as_str();
     match req {
         Request::Status => {
             let mut st = state.lock().unwrap();
@@ -209,12 +219,20 @@ fn handle_request(req: &Request, hwmon: &str, state: &Arc<Mutex<State>>) -> serd
                 state,
             )
         }
-        Request::Auto { fan } => {
-            let mut st = state.lock().unwrap();
-            if let Some(slot) = st.manual_targets.get_mut(*fan as usize) {
-                *slot = None;
+        Request::Auto { fan: _ } => {
+            {
+                let mut st = state.lock().unwrap();
+                st.manual_targets = vec![None; 8];
             }
-            serde_json::json!({"ok": true, "note": "manual override cleared; fan follows SMC curve"})
+            let _ = std::process::Command::new("modprobe")
+                .args(["-r", "macsmc_hwmon"]).status();
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            match std::process::Command::new("modprobe")
+                .args(["macsmc_hwmon", "fan_control=1"]).status()
+            {
+                Ok(s) if s.success() => serde_json::json!({"ok": true, "note": "manual control released"}),
+                _ => serde_json::json!({"ok": false, "error": "module reload failed"}),
+            }
         }
     }
 }

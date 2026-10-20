@@ -1,0 +1,13 @@
+[package]
+name = "asahi-sleep-log"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "asahi-sleep-log"
+path = "src/main.rs"
+
+[dependencies]
+asahi-core.workspace = true
+serde_json.workspace = true
+chrono = "0.4"

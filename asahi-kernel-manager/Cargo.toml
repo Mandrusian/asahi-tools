@@ -1,0 +1,12 @@
+[package]
+name = "asahi-kernel-manager"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "asahi-kernel-manager"
+path = "src/main.rs"
+
+[dependencies]
+ratatui.workspace = true
+crossterm.workspace = true

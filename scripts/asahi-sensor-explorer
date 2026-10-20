@@ -1,0 +1,131 @@
+#!/bin/bash
+# asahi-sensor-explorer — list every hwmon input, categorized by type
+# usage: asahi-sensor-explorer [--json] [--raw]
+set -euo pipefail
+
+HWMON_BASE="/sys/class/hwmon"
+
+# Format a raw sysfs value based on sensor type
+format_value() {
+    local type="$1" raw="$2"
+    case "$type" in
+        temp)     awk -v v="$raw" 'BEGIN { printf "%.1f °C", v/1000 }' ;;
+        fan)      awk -v v="$raw" 'BEGIN { printf "%d rpm", v }' ;;
+        power)    awk -v v="$raw" 'BEGIN { printf "%.2f W", v/1000000 }' ;;
+        voltage)  awk -v v="$raw" 'BEGIN { printf "%.3f V", v/1000 }' ;;
+        current)  awk -v v="$raw" 'BEGIN { printf "%.3f A", v/1000 }' ;;
+        energy)   awk -v v="$raw" 'BEGIN { printf "%.2f Wh", v/1000000 }' ;;
+        humidity) awk -v v="$raw" 'BEGIN { printf "%.1f %%", v/1000 }' ;;
+        *)        echo "$raw" ;;
+    esac
+}
+
+# Categorize by file name prefix
+categorize() {
+    local base="$1"
+    case "$base" in
+        temp*)    echo temp ;;
+        fan*)     echo fan ;;
+        power*)   echo power ;;
+        in*)      echo voltage ;;
+        curr*)    echo current ;;
+        energy*)  echo energy ;;
+        humidity*) echo humidity ;;
+        pwm*)     echo pwm ;;
+        *)        echo "" ;;
+    esac
+}
+
+scan_hwmon() {
+    for hw in "$HWMON_BASE"/hwmon*; do
+        [ -d "$hw" ] || continue
+        local name="unknown"
+        [ -f "$hw/name" ] && name=$(cat "$hw/name" 2>/dev/null || echo "unknown")
+
+        # For each *_input file, look up value
+        for input in "$hw"/*_input; do
+            [ -f "$input" ] || continue
+            local base
+            base=$(basename "$input")
+            base="${base%_input}"
+            local cat
+            cat=$(categorize "$base")
+            [ -z "$cat" ] && continue
+
+            local raw
+            raw=$(cat "$input" 2>/dev/null || echo "")
+
+            # Look for a label file (temp1_label, fan1_label)
+            local label=""
+            [ -f "$hw/${base}_label" ] && label=$(cat "$hw/${base}_label" 2>/dev/null || echo "")
+
+            local pretty
+            if [ -n "$raw" ]; then
+                pretty=$(format_value "$cat" "$raw")
+            else
+                pretty="(unreadable)"
+            fi
+
+            printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$base" "$cat" "${raw:--}" "$pretty"
+            if [ -n "$label" ]; then
+                printf '%s\t%s\tlabel\t%s\t%s\n' "$name" "$base" label "$label"
+            fi
+        done
+    done
+}
+
+main() {
+    local mode="${1:-}"
+
+    if [ "$mode" = "--json" ]; then
+        local first=1
+        printf '['
+        scan_hwmon | while IFS=$'\t' read -r chip sensor cat raw pretty; do
+            [ "$first" = "1" ] && first=0 || printf ','
+            printf '{"chip":"%s","sensor":"%s","category":"%s","raw":%s,"formatted":"%s"}' \
+                "$chip" "$sensor" "$cat" "${raw:--1}" "$pretty"
+        done
+        printf ']\n'
+        return
+    fi
+
+    # Group by chip
+    echo "── hwmon sensors ──"
+    echo
+
+    local current_chip=""
+    scan_hwmon | sort | while IFS=$'\t' read -r chip sensor cat raw pretty; do
+        if [ "$chip" != "$current_chip" ]; then
+            echo
+            printf '%s%s%s\n' "$(tput bold 2>/dev/null || true)" "$chip" "$(tput sgr0 2>/dev/null || true)"
+            current_chip="$chip"
+        fi
+        if [ "$cat" = "label" ]; then
+            printf '    %-20s %s\n' "" "$pretty"
+        else
+            printf '    %-20s %-14s %s\n' "$sensor" "$cat" "$pretty"
+        fi
+    done
+
+    echo
+    local total
+    total=$(scan_hwmon | wc -l)
+    echo "  ($total sensor inputs across $(ls -d "$HWMON_BASE"/hwmon* 2>/dev/null | wc -l) chips)"
+}
+
+case "${1:-}" in
+    --json)   main --json ;;
+    --raw)    scan_hwmon | column -t -s $'\t' ;;
+    ""|--*)   main ;;
+    *)
+        cat <<'USAGE'
+asahi-sensor-explorer — list every hwmon input
+
+  asahi-sensor-explorer            grouped text output
+  asahi-sensor-explorer --json     JSON array for programmatic use
+  asahi-sensor-explorer --raw      tab-separated raw fields
+
+  Categories: temp, fan, power, voltage, current, energy, humidity, pwm
+USAGE
+        ;;
+esac

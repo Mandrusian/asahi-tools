@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Asahi Tools
+GenericName=Asahi Launcher
+Comment=Launch asahi-tools utilities from a terminal dashboard
+Exec=asahi-tui
+Icon=asahi-tools
+Terminal=true
+Categories=System;Monitor;Utility;
+Keywords=asahi;tui;dashboard;launcher;

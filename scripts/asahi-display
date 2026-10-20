@@ -1,0 +1,159 @@
+#!/bin/bash
+# asahi-display — output switcher for Wayland compositors
+# Works with wlr-randr (niri, hyprland, sway) and kscreen-doctor (KDE)
+set -euo pipefail
+
+INTERNAL="${ASAHI_INTERNAL:-eDP-1}"
+
+backend() {
+    local desk="${XDG_CURRENT_DESKTOP:-${XDG_SESSION_DESKTOP:-${DESKTOP_SESSION:-}}}"
+    case "$desk" in
+        KDE|*KDE*|plasma*)
+            command -v kscreen-doctor >/dev/null && { echo kde; return; }
+            ;;
+    esac
+    if command -v wlr-randr >/dev/null; then
+        echo wlr
+        return
+    fi
+    if command -v kscreen-doctor >/dev/null; then
+        echo kde
+        return
+    fi
+    echo none
+}
+
+list_outputs_wlr() { wlr-randr 2>/dev/null | grep -E '^[A-Za-z]' | awk '{print $1}'; }
+list_outputs_kde() {
+    # Plasma 6: -j emits JSON array of outputs
+    local json
+    json=$(kscreen-doctor -j 2>/dev/null) || return
+    # Extract "name":"..." fields; kscreen-doctor JSON uses name for connectors
+    echo "$json" | grep -oE '"name"[[:space:]]*:[[:space:]]*"[^"]+"' \
+        | sed -E 's/.*"([^"]+)"$/\1/' \
+        | grep -vE '^[0-9]+$' \
+        | sort -u
+}
+
+list_outputs() {
+    case "$(backend)" in
+        wlr) list_outputs_wlr ;;
+        kde) list_outputs_kde ;;
+        *)   echo "" ;;
+    esac
+}
+
+external_output() {
+    local int="$INTERNAL"
+    for o in $(list_outputs); do
+        [ "$o" != "$int" ] && { echo "$o"; return; }
+    done
+}
+
+cmd_status() {
+    local ext
+    ext=$(external_output || true)
+    if [ "${1:-}" = "--json" ]; then
+        printf '{"backend":"%s","internal":"%s","external":"%s","outputs":[' \
+            "$(backend)" "$INTERNAL" "${ext:-}"
+        list_outputs | awk 'BEGIN{ORS=""} {print (NR>1?",":"")"\""$0"\""}'
+        printf ']}\n'
+    else
+        echo "backend:  $(backend)"
+        echo "internal: $INTERNAL"
+        echo "external: ${ext:-none}"
+        echo "outputs:  $(list_outputs | tr '\n' ' ')"
+    fi
+}
+
+do_internal_only() {
+    case "$(backend)" in
+        wlr)
+            local ext; ext=$(external_output || true)
+            [ -n "$ext" ] && wlr-randr --output "$ext" --off
+            wlr-randr --output "$INTERNAL" --on
+            ;;
+        kde)
+            local ext; ext=$(external_output || true)
+            [ -n "$ext" ] && kscreen-doctor "output.$ext.disable" || true
+            kscreen-doctor "output.$INTERNAL.enable"
+            ;;
+        *) echo "no backend" >&2; return 1 ;;
+    esac
+    echo "internal only"
+}
+
+do_external_only() {
+    local ext; ext=$(external_output || true)
+    [ -z "$ext" ] && { echo "no external output detected" >&2; return 1; }
+    case "$(backend)" in
+        wlr)
+            wlr-randr --output "$INTERNAL" --off
+            wlr-randr --output "$ext" --on --pos 0,0
+            ;;
+        kde)
+            kscreen-doctor "output.$INTERNAL.disable"
+            kscreen-doctor "output.$ext.enable"
+            ;;
+    esac
+    echo "external only"
+}
+
+do_extend() {
+    local ext; ext=$(external_output || true)
+    [ -z "$ext" ] && { echo "no external output detected" >&2; return 1; }
+    case "$(backend)" in
+        wlr)
+            local int_w
+            int_w=$(wlr-randr 2>/dev/null | grep -A2 "^$INTERNAL" | grep -oE '[0-9]+x[0-9]+' | head -1 | cut -dx -f1)
+            int_w=${int_w:-3456}
+            wlr-randr --output "$INTERNAL" --on --pos 0,0 \
+                      --output "$ext" --on --pos "$int_w,0"
+            ;;
+        kde)
+            kscreen-doctor "output.$INTERNAL.enable" \
+                          "output.$ext.enable" \
+                          "output.$ext.position.3456,0"
+            ;;
+    esac
+    echo "extended"
+}
+
+do_mirror() {
+    local ext; ext=$(external_output || true)
+    [ -z "$ext" ] && { echo "no external output detected" >&2; return 1; }
+    case "$(backend)" in
+        wlr)
+            wlr-randr --output "$INTERNAL" --on --pos 0,0 \
+                      --output "$ext" --on --pos 0,0 --same-as "$INTERNAL" 2>/dev/null \
+                || echo "mirror may not be supported by wlr-randr on this compositor" >&2
+            ;;
+        kde)
+            echo "KDE mirror: use System Settings -> Display" >&2
+            return 1
+            ;;
+    esac
+    echo "mirrored"
+}
+
+case "${1:-}" in
+    status)   shift; cmd_status "${1:-}" ;;
+    internal) do_internal_only ;;
+    external) do_external_only ;;
+    extend)   do_extend ;;
+    mirror)   do_mirror ;;
+    --json)   cmd_status --json ;;
+    *)
+        cat <<'USAGE'
+asahi-display — output mode switcher
+
+  asahi-display status [--json]
+  asahi-display internal    internal panel only
+  asahi-display external    external only
+  asahi-display extend      both, extended
+  asahi-display mirror      both, mirrored (wrL only)
+
+  Requires: wlr-randr (niri/hyprland/sway) or kscreen-doctor (KDE)
+USAGE
+        ;;
+esac

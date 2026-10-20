@@ -1,0 +1,17 @@
+[package]
+name = "asahi-battery-health"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "asahi-battery-health"
+path = "src/main.rs"
+
+[dependencies]
+asahi-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+rusqlite = { version = "0.32", features = ["bundled"] }
+chrono = "0.4"

@@ -1,0 +1,13 @@
+[package]
+name = "asahi-charge-daemon"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "asahi-charge-daemon"
+path = "src/main.rs"
+
+[dependencies]
+asahi-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

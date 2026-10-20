@@ -1,0 +1,116 @@
+#!/bin/bash
+# asahi-snapshot — safe rollback points before kernel/firmware updates
+# usage: asahi-snapshot {status|create [label]|list|rollback ID|cleanup|--json}
+set -euo pipefail
+
+ROOT_FS=$(findmnt -n -o FSTYPE / 2>/dev/null || echo "unknown")
+
+has_snapper()  { command -v snapper >/dev/null; }
+has_btrfs()    { [ "$ROOT_FS" = "btrfs" ]; }
+has_timeshift(){ command -v timeshift >/dev/null; }
+
+cmd_status() {
+    if [ "${1:-}" = "--json" ]; then
+        printf '{"root_fs":"%s","snapper":%s,"btrfs":%s,"timeshift":%s}\n' \
+            "$ROOT_FS" \
+            "$(has_snapper && echo true || echo false)" \
+            "$(has_btrfs && echo true || echo false)" \
+            "$(has_timeshift && echo true || echo false)"
+    else
+        echo "root fs:   $ROOT_FS"
+        echo "snapper:   $(has_snapper && echo available || echo not installed)"
+        echo "btrfs:     $(has_btrfs && echo yes || echo no)"
+        echo "timeshift: $(has_timeshift && echo available || echo not installed)"
+        if ! has_btrfs; then
+            echo
+            echo "⚠  root is not Btrfs; snapshots unavailable."
+            echo "   Asahi Fedora uses Btrfs by default, so this may indicate a custom install."
+        fi
+    fi
+}
+
+cmd_create() {
+    local label="${1:-manual}"
+    if ! has_btrfs; then
+        echo "error: root is not Btrfs; cannot snapshot" >&2
+        return 1
+    fi
+    if has_snapper; then
+        sudo snapper -c root create --description "$label" --cleanup-algorithm number
+        echo "snapshot created (snapper): $label"
+    elif [ -d /.snapshots ] || [ -d /var/lib/snapshots ]; then
+        local dir="/var/lib/snapshots"
+        [ -d /.snapshots ] && dir="/.snapshots"
+        local ts; ts=$(date +%Y%m%d-%H%M%S)
+        local path="$dir/$ts-$label"
+        sudo mkdir -p "$path"
+        sudo btrfs subvolume snapshot / "$path"
+        echo "snapshot created: $path"
+    else
+        echo "error: neither snapper nor /.snapshots directory available" >&2
+        return 1
+    fi
+}
+
+cmd_list() {
+    if has_snapper; then
+        sudo snapper -c root list
+    elif [ -d /.snapshots ]; then
+        ls -la /.snapshots/ 2>/dev/null | tail -n +2
+    else
+        echo "no snapshot backend"
+    fi
+}
+
+cmd_rollback() {
+    local id="${1:-}"
+    [ -z "$id" ] && { echo "usage: rollback ID (from 'list')" >&2; exit 1; }
+    if ! has_btrfs; then
+        echo "error: root is not Btrfs" >&2; return 1
+    fi
+    if has_snapper; then
+        echo "About to roll back to snapper snapshot #$id."
+        echo "This is destructive; you'll need to reboot afterward."
+        printf 'Type "yes" to confirm: '
+        read -r confirm || confirm=""
+        if [ "$confirm" != "yes" ]; then echo "cancelled"; return 0; fi
+        sudo snapper -c root undochange "$id"..
+        echo "rolled back; reboot to complete"
+    else
+        echo "manual rollback required (snapper not available)"
+        echo "candidate: $(ls /.snapshots/ 2>/dev/null | grep "^$id" | head -1)"
+        echo "Use 'btrfs subvolume snapshot' from a recovery environment."
+    fi
+}
+
+cmd_cleanup() {
+    if has_snapper; then
+        sudo snapper -c root cleanup number
+    else
+        echo "no snapper; nothing to clean automatically"
+    fi
+}
+
+case "${1:-}" in
+    status)         shift; cmd_status "${1:-}" ;;
+    create)         shift; cmd_create "${1:-manual}" ;;
+    before-update)  cmd_create "pre-update $(date +%Y-%m-%d)" ;;
+    list)           cmd_list ;;
+    rollback)       shift; cmd_rollback "${1:-}" ;;
+    cleanup)        cmd_cleanup ;;
+    --json)         cmd_status --json ;;
+    *)
+        cat <<'USAGE'
+asahi-snapshot — safe rollback points
+
+  asahi-snapshot status [--json]
+  asahi-snapshot create [label]        create snapshot
+  asahi-snapshot before-update         convenience: snapshot named "pre-update YYYY-MM-DD"
+  asahi-snapshot list
+  asahi-snapshot rollback ID
+  asahi-snapshot cleanup               prune old snapshots (snapper)
+
+  Recommended: run "before-update" before kernel/firmware upgrades.
+USAGE
+        ;;
+esac

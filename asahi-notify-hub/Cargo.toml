@@ -1,13 +1,11 @@
 [package]
-name = "battery-limiter"
+name = "asahi-notify-hub"
 version.workspace = true
 edition.workspace = true
 
 [[bin]]
-name = "battery-limiter"
+name = "asahi-notify-hub"
 path = "src/main.rs"
 
 [dependencies]
 asahi-core.workspace = true
-ratatui.workspace = true
-crossterm.workspace = true

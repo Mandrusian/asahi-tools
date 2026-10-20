@@ -90,6 +90,31 @@ Runs an interactive TUI: pick components, confirm, install. Takes ~3 min for a f
 
 Removes all binaries, scripts, desktop entries, and systemd units. Preserves `~/.config/asahi-tools/` (your settings) and `~/.local/share/asahi-tools/*.sqlite` (your history). Add `--dry-run` to preview.
 
+## What's new in v0.3.0
+
+This is a **consolidation release**. Fewer tools, but each one works better.
+
+**Removed** — these were redundant once the GUI + daemons matured:
+- `asahi-gui` — the old egui app, superseded by `asahi-gtk`
+- `battery-limiter` — superseded by the Battery tab + `asahi-charge-daemon`
+- `kbd-backlight` — superseded by Input tab + `asahi-priv-daemon`
+- `asahi-charge-notify` — superseded by `asahi-notify-hub`
+
+**Added**:
+- `asahi` meta-command — `asahi battery`, `asahi thermal`, `asahi trackpad calibrate` — one entry point, subcommands dispatch to the right tool
+- Shell completions — `asahi-completions bash|zsh|fish` (append to your rc)
+- 8 smoke tests in `asahi-core/tests/smoke.rs` — catch config-path and socket-path regressions in CI
+- GTK: settings search, AboutWindow (help icon in headerbar), tab title shows version
+- TUI: `find_binary` results cached in `OnceLock`, first lookup ~5ms → subsequent ~0.1ms
+- Installer: `install.sh --upgrade` detects existing install, prints version diff, writes `$INSTALL_DIR/VERSION`
+- Release workflow now excludes `asahi-trackpad` (eframe doesn't cross-compile) — build it locally with `install.sh --source`
+
+**Still to come** (v0.4.0):
+- Ambient light auto-brightness (`asahi-als-daemon`)
+- Profile presets (`quiet`, `balanced`, `performance`)
+- Power draw graph, sleep log viewer
+- GUI: NavigationSplitView sidebar, toasts, command palette
+
 ## Usage
 
 ### Asahi Settings (GUI)
