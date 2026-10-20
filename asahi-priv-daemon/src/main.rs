@@ -51,6 +51,9 @@ enum Request {
     SetFnMode { value: u32 },
     ServiceAction { name: String, action: String },
     ServiceStatus { name: String },
+    AlsStatus,
+    AlsSetEnabled { enabled: bool },
+    AlsManualOverride,
 }
 
 const ALLOWED_SERVICES: &[&str] = &[
@@ -206,6 +209,45 @@ fn handle(req: Request) -> serde_json::Value {
                 Err(e) => serde_json::json!({"ok": false, "error": e.to_string()}),
             }
         }
+        Request::AlsStatus => {
+            let cfg = load_als_config();
+            let lux = std::fs::read_to_string(&cfg.sensor_path)
+                .ok()
+                .and_then(|s| s.trim().parse::<f64>().ok());
+            let now = now_unix();
+            let until = ALS_OVERRIDE_UNTIL.load(Ordering::Relaxed);
+            serde_json::json!({
+                "ok": true,
+                "enabled": ALS_ENABLED.load(Ordering::Relaxed),
+                "lux": lux,
+                "override_active": now < until,
+                "override_remaining_secs": (until - now).max(0),
+                "sensor_path": cfg.sensor_path,
+                "sensor_available": std::path::Path::new(&cfg.sensor_path).exists(),
+            })
+        }
+        Request::AlsSetEnabled { enabled } => {
+            ALS_ENABLED.store(enabled, Ordering::Relaxed);
+            let mut cfg = load_als_config();
+            cfg.enabled = enabled;
+            let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+            let path = home.join(".config/asahi-tools/als.json");
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            let _ = std::fs::write(&path, serde_json::to_string_pretty(&serde_json::json!({
+                "enabled": cfg.enabled,
+                "sensor_path": cfg.sensor_path,
+                "curve": cfg.curve,
+                "smoothing_ms": cfg.smoothing_ms,
+                "manual_override_secs": cfg.manual_override_secs,
+            })).unwrap_or_default());
+            serde_json::json!({"ok": true, "enabled": enabled})
+        }
+        Request::AlsManualOverride => {
+            let cfg = load_als_config();
+            let until = now_unix() + cfg.manual_override_secs;
+            ALS_OVERRIDE_UNTIL.store(until, Ordering::Relaxed);
+            serde_json::json!({"ok": true, "override_secs": cfg.manual_override_secs})
+        }
     }
 }
 
@@ -227,6 +269,103 @@ fn handle_client(stream: UnixStream) -> std::io::Result<()> {
     Ok(())
 }
 
+// ── ALS (ambient light sensor) ──────────────────────────
+use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
+use std::sync::Arc;
+
+static ALS_ENABLED: AtomicBool = AtomicBool::new(false);
+static ALS_OVERRIDE_UNTIL: AtomicI64 = AtomicI64::new(0);
+
+#[derive(serde::Deserialize, Clone)]
+struct AlsCurvePoint {
+    lux: f64,
+    brightness: f64,
+}
+
+#[derive(serde::Deserialize, Clone)]
+struct AlsConfig {
+    enabled: bool,
+    sensor_path: String,
+    curve: Vec<(f64, f64)>,
+    smoothing_ms: u64,
+    manual_override_secs: i64,
+}
+
+impl Default for AlsConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            sensor_path: "/sys/bus/iio/devices/iio:device0/in_illuminance_input".into(),
+            curve: vec![(0.0, 10.0), (50.0, 30.0), (200.0, 55.0), (1000.0, 85.0), (5000.0, 100.0)],
+            smoothing_ms: 500,
+            manual_override_secs: 300,
+        }
+    }
+}
+
+fn load_als_config() -> AlsConfig {
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let p = home.join(".config/asahi-tools/als.json");
+    match std::fs::read_to_string(&p) {
+        Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+        Err(_) => AlsConfig::default(),
+    }
+}
+
+fn interpolate_curve(curve: &[(f64, f64)], lux: f64) -> f64 {
+    if curve.is_empty() { return 50.0; }
+    if lux <= curve[0].0 { return curve[0].1; }
+    if lux >= curve[curve.len() - 1].0 { return curve[curve.len() - 1].1; }
+    for i in 1..curve.len() {
+        if lux <= curve[i].0 {
+            let (x0, y0) = curve[i - 1];
+            let (x1, y1) = curve[i];
+            let t = (lux - x0) / (x1 - x0);
+            return y0 + t * (y1 - y0);
+        }
+    }
+    curve[curve.len() - 1].1
+}
+
+fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
+
+fn als_loop(cfg: AlsConfig) {
+    eprintln!("als: thread started (sensor={}, curve points={})", cfg.sensor_path, cfg.curve.len());
+    ALS_ENABLED.store(cfg.enabled, Ordering::Relaxed);
+    let mut last_brightness = -1.0f64;
+    loop {
+        std::thread::sleep(Duration::from_millis(cfg.smoothing_ms));
+        if !ALS_ENABLED.load(Ordering::Relaxed) { continue; }
+        // Check manual override window
+        let now = now_unix();
+        let until = ALS_OVERRIDE_UNTIL.load(Ordering::Relaxed);
+        if now < until { continue; }
+        // Read lux
+        let lux = match std::fs::read_to_string(&cfg.sensor_path) {
+            Ok(s) => match s.trim().parse::<f64>() { Ok(v) => v, Err(_) => continue },
+            Err(_) => continue,
+        };
+        // Compute target brightness (as percent of max)
+        let target_pct = interpolate_curve(&cfg.curve, lux);
+        // Smooth towards target
+        let target = if last_brightness < 0.0 { target_pct } else {
+            last_brightness + (target_pct - last_brightness) * 0.25
+        };
+        last_brightness = target;
+        // Write to backlight
+        if let Some(path) = find_disp() {
+            let max = disp_max_path().and_then(|p| read_u32(&p)).unwrap_or(100);
+            let val = ((target / 100.0) * max as f64).clamp(1.0, max as f64) as u32;
+            let _ = write_val(path, &val.to_string());
+        }
+    }
+}
+
 fn main() {
     if Path::new(SOCKET).exists() {
         let _ = std::fs::remove_file(SOCKET);
@@ -242,6 +381,11 @@ fn main() {
     // operation whitelist is what enforces safety, not the socket mode.
     let _ = std::fs::set_permissions(SOCKET, std::fs::Permissions::from_mode(0o666));
     eprintln!("asahi-priv-daemon: listening on {SOCKET}");
+
+    // Spawn ALS thread
+    let als_cfg = load_als_config();
+    let als_cfg_clone = als_cfg.clone();
+    thread::spawn(move || als_loop(als_cfg_clone));
 
     for stream in listener.incoming() {
         if let Ok(s) = stream {

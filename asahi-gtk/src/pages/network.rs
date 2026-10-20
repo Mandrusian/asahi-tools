@@ -34,7 +34,6 @@ fn wifi_info() -> (String, String, String, u32) {
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     let wifi_group = adw::PreferencesGroup::builder().title("Wi-Fi").build();
     let ssid_row = adw::ActionRow::builder().title("SSID").subtitle("…").build();
@@ -47,7 +46,12 @@ pub fn build() -> adw::PreferencesPage {
     let restart_wifi = gtk::Button::with_label("Restart Wi-Fi module");
     restart_wifi.set_margin_top(4);
     restart_wifi.set_margin_bottom(4);
-    restart_wifi.connect_clicked(move |_| { let _ = asahi_core::priv_daemon::restart_module("brcmfmac"); });
+    restart_wifi.connect_clicked(move |_| {
+        match asahi_core::priv_daemon::restart_module("brcmfmac") {
+            Ok(()) => eprintln!("network: wifi module restarted"),
+            Err(e) => eprintln!("network: wifi restart failed: {}", e),
+        }
+    });
     wifi_group.add(&restart_wifi);
 
     let net_tool_btn = gtk::Button::with_label("Open net-restarter (scan + restart)");
@@ -63,7 +67,12 @@ pub fn build() -> adw::PreferencesPage {
     let restart_bt = gtk::Button::with_label("Restart Bluetooth module");
     restart_bt.set_margin_top(4);
     restart_bt.set_margin_bottom(4);
-    restart_bt.connect_clicked(move |_| { let _ = asahi_core::priv_daemon::restart_module("hci_bcm4377"); });
+    restart_bt.connect_clicked(move |_| {
+        match asahi_core::priv_daemon::restart_module("hci_bcm4377") {
+            Ok(()) => eprintln!("network: bluetooth module restarted"),
+            Err(e) => eprintln!("network: bluetooth restart failed: {}", e),
+        }
+    });
     bt_group.add(&restart_bt);
     page.add(&bt_group);
 

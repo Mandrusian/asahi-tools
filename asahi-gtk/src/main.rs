@@ -58,6 +58,7 @@ fn build_ui(app: &adw::Application) {
     stack.add_titled(&pages::input::build(), Some("input"), "Input");
     stack.add_titled(&pages::system::build(), Some("sys"), "System");
     stack.add_titled(&pages::services::build(), Some("svc"), "Services");
+    stack.add_titled(&pages::profiles::build(), Some("prof"), "Profiles");
     stack.add_titled(&pages::about::build(), Some("about"), "About");
 
     let switcher = gtk::StackSwitcher::new();

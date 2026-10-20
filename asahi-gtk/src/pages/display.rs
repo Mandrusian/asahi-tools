@@ -32,12 +32,13 @@ fn brightness_cur() -> u32 {
 }
 
 fn set_brightness(v: u32) {
-    let _ = asahi_core::priv_daemon::set_display(v);
+    if let Err(e) = asahi_core::priv_daemon::set_display(v) {
+        eprintln!("display: brightness set {} failed: {}", v, e);
+    }
 }
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     let bright_group = adw::PreferencesGroup::builder().title("Display brightness").build();
     let bright_row = adw::ActionRow::builder().title("Brightness").subtitle("—").build();

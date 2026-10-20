@@ -20,6 +20,9 @@ pub enum Request {
     SetFnMode { value: u32 },
     ServiceAction { name: String, action: String },
     ServiceStatus { name: String },
+    AlsStatus,
+    AlsSetEnabled { enabled: bool },
+    AlsManualOverride,
 }
 
 #[derive(Deserialize, Debug, Default, Clone)]
@@ -40,6 +43,11 @@ pub struct Response {
     #[serde(default)] pub enabled: Option<bool>,
     #[serde(default)] pub detail: Option<String>,
     #[serde(default)] pub path: Option<String>,
+    #[serde(default)] pub lux: Option<f64>,
+    #[serde(default)] pub override_active: Option<bool>,
+    #[serde(default)] pub override_remaining_secs: Option<i64>,
+    #[serde(default)] pub sensor_path: Option<String>,
+    #[serde(default)] pub sensor_available: Option<bool>,
 }
 
 pub fn query(req: &Request) -> Option<Response> {
@@ -125,5 +133,37 @@ pub fn service_action(name: &str, action: &str) -> Result<(), String> {
         action: action.to_string(),
     })
     .ok_or("daemon not running")?;
+    if r.ok { Ok(()) } else { Err(r.error.unwrap_or_default()) }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct AlsStatus {
+    pub enabled: bool,
+    pub lux: Option<f64>,
+    pub override_active: bool,
+    pub override_remaining_secs: i64,
+    pub sensor_available: bool,
+}
+
+pub fn als_status() -> Option<AlsStatus> {
+    let r = query(&Request::AlsStatus)?;
+    if !r.ok { return None; }
+    Some(AlsStatus {
+        enabled: r.enabled.unwrap_or(false),
+        lux: r.lux,
+        override_active: r.override_active.unwrap_or(false),
+        override_remaining_secs: r.override_remaining_secs.unwrap_or(0),
+        sensor_available: r.sensor_available.unwrap_or(false),
+    })
+}
+
+pub fn als_set_enabled(enabled: bool) -> Result<(), String> {
+    let r = query(&Request::AlsSetEnabled { enabled }).ok_or("daemon not running")?;
+    if r.ok { Ok(()) } else { Err(r.error.unwrap_or_default()) }
+}
+
+pub fn als_manual_override() -> Result<(), String> {
+    let r = query(&Request::AlsManualOverride).ok_or("daemon not running")?;
     if r.ok { Ok(()) } else { Err(r.error.unwrap_or_default()) }
 }

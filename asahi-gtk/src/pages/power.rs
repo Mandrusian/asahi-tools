@@ -10,7 +10,10 @@ fn current_profile() -> String {
 }
 
 fn set_profile(p: &str) -> bool {
-    asahi_core::priv_daemon::set_profile(p).is_ok()
+    match asahi_core::priv_daemon::set_profile(p) {
+        Ok(()) => { eprintln!("power: profile set to {}", p); true }
+        Err(e) => { eprintln!("power: profile set {} failed: {}", p, e); false }
+    }
 }
 
 fn read_power_rails() -> Vec<(String, f64)> {
@@ -36,7 +39,6 @@ fn read_power_rails() -> Vec<(String, f64)> {
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     let profiles_group = adw::PreferencesGroup::builder()
         .title("Power profile")

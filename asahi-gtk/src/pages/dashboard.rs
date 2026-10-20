@@ -262,7 +262,6 @@ fn add_actions_card(page: &adw::PreferencesPage) {
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
     let cfg = load_widget_config();
 
     if widget_enabled("battery", &cfg) { add_battery_card(&page); }

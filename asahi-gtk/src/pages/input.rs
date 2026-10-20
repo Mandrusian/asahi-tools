@@ -14,7 +14,9 @@ fn kbd_brightness() -> (u32, u32) {
 }
 
 fn set_kbd(v: u32) {
-    let _ = asahi_core::priv_daemon::set_kbd(v);
+    if let Err(e) = asahi_core::priv_daemon::set_kbd(v) {
+        eprintln!("input: kbd backlight set {} failed: {}", v, e);
+    }
 }
 
 fn fn_mode() -> String {
@@ -24,7 +26,6 @@ fn fn_mode() -> String {
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     // ── Keyboard ──
     let kbd_group = adw::PreferencesGroup::builder().title("Keyboard backlight").build();
@@ -44,20 +45,64 @@ pub fn build() -> adw::PreferencesPage {
     fn_row.add_suffix(&fn_btn);
     fn_btn.connect_clicked(move |_| {
         let cur = asahi_core::priv_daemon::get_fnmode().unwrap_or(1);
-        // Cycle only through useful modes: media(1) → fn(2) → auto(3) → media(1)
-        // Never land on 0 (disabled) — that kills brightness/volume entirely.
         let next = match cur {
             1 => 2,
             2 => 3,
             _ => 1,
         };
-        let _ = asahi_core::priv_daemon::set_fnmode(next);
+        match asahi_core::priv_daemon::set_fnmode(next) {
+            Ok(()) => eprintln!("input: fnmode set to {} ({})",
+                next, match next { 1=>"media", 2=>"fn", 3=>"auto", _=>"?" }),
+            Err(e) => eprintln!("input: fnmode set failed: {}", e),
+        }
     });
     kbd_group.add(&fn_row);
 
     page.add(&kbd_group);
 
     // ── Force click ──
+    // ── ALS (auto-brightness) ──
+    let als_group = adw::PreferencesGroup::builder()
+        .title("Auto-brightness")
+        .description("Adjusts display based on ambient light sensor (if available)")
+        .build();
+
+    let als_row = adw::ActionRow::builder()
+        .title("Enable auto-brightness")
+        .subtitle("checking sensor…")
+        .build();
+    let als_switch = gtk::Switch::new();
+    als_switch.set_valign(gtk::Align::Center);
+    als_row.add_suffix(&als_switch);
+    als_row.set_activatable_widget(Some(&als_switch));
+    als_group.add(&als_row);
+
+    // Initialize from daemon
+    if let Some(status) = asahi_core::priv_daemon::als_status() {
+        als_switch.set_active(status.enabled);
+        als_row.set_subtitle(if status.sensor_available {
+            if status.enabled { "enabled" } else { "disabled (sensor ready)" }
+        } else {
+            "sensor not available on this kernel"
+        });
+        als_switch.set_sensitive(status.sensor_available);
+    } else {
+        als_row.set_subtitle("daemon not running");
+        als_switch.set_sensitive(false);
+    }
+
+    {
+        let row = als_row.clone();
+        als_switch.connect_active_notify(move |sw| {
+            match asahi_core::priv_daemon::als_set_enabled(sw.is_active()) {
+                Ok(()) => row.set_subtitle(if sw.is_active() { "enabled" } else { "disabled" }),
+                Err(e) => eprintln!("input: als toggle failed: {}", e),
+            }
+        });
+    }
+
+    page.add(&als_group);
+
     let tc = TrackpadConfig::load();
     let tp_group = adw::PreferencesGroup::builder()
         .title("Trackpad force click")

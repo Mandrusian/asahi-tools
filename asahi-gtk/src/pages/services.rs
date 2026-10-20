@@ -104,7 +104,6 @@ fn subtitle_for(svc: &ServiceDef, active: bool, enabled: bool) -> String {
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     // ── System daemons ──
     let system_group = adw::PreferencesGroup::builder()

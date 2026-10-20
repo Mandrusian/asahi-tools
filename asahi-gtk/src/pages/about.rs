@@ -4,7 +4,6 @@ use libadwaita as adw;
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
     let g = adw::PreferencesGroup::builder().title("asahi-tools").build();
     g.add(&adw::ActionRow::builder().title("Version").subtitle(env!("CARGO_PKG_VERSION")).build());
     g.add(&adw::ActionRow::builder().title("Repo").subtitle("github.com/Mandrusian/asahi-tools").build());

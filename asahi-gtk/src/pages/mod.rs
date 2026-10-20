@@ -8,3 +8,4 @@ pub mod input;
 pub mod system;
 pub mod about;
 pub mod services;
+pub mod profiles;

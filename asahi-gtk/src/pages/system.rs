@@ -6,7 +6,6 @@ use crate::helper::{find_binary, spawn_in_terminal};
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     // ── Kernel ──
     let kernel_group = adw::PreferencesGroup::builder().title("Kernel").build();

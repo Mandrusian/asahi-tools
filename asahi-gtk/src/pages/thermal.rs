@@ -5,7 +5,6 @@ use asahi_core::{find_fan_hwmon, scan_temps, scan_fans, sysmon};
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     let temps_group = adw::PreferencesGroup::builder().title("Temperatures").build();
     let rows: Vec<adw::ActionRow> = (1..=8)

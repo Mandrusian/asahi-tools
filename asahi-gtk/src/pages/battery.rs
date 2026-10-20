@@ -5,7 +5,6 @@ use asahi_core::{charge, get_battery_capacity, get_battery_status, get_charge_th
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-    page.set_search_enabled(true);
 
     // ── Status ──
     let status = adw::PreferencesGroup::builder().title("Status").build();

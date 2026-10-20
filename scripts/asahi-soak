@@ -68,7 +68,12 @@ try:
     s.connect('$socket')
     s.sendall(b'{\"cmd\":\"status\"}\n')
     data = s.recv(4096)
-    print('ok' if b'\"ok\":true' in data else 'bad')
+    import json as _json
+    try:
+        parsed = _json.loads(data.decode())
+        print('ok' if parsed.get('ok') is True else 'bad')
+    except Exception:
+        print('bad')
 except Exception as e:
     print('err')
 " 2>/dev/null)
