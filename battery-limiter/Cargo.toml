@@ -1,0 +1,13 @@
+[package]
+name = "battery-limiter"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "battery-limiter"
+path = "src/main.rs"
+
+[dependencies]
+asahi-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true

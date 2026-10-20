@@ -1,0 +1,19 @@
+[package]
+name = "sys-monitor"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "sys-monitor"
+path = "src/main.rs"
+
+[[bin]]
+name = "sysmon-daemon"
+path = "src/bin/daemon.rs"
+
+[dependencies]
+asahi-core.workspace = true
+ratatui.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+serde_json.workspace = true

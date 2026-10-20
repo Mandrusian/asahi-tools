@@ -1,0 +1,27 @@
+[workspace]
+resolver = "2"
+members = [
+    "asahi-core",
+    "kbd-backlight",
+    "battery-limiter",
+    "net-restarter",
+    "sys-monitor",
+    "asahi-tui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+
+[workspace.dependencies]
+asahi-core = { path = "asahi-core" }
+thiserror = "2.0"
+ratatui = "0.29"
+crossterm = "0.28"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

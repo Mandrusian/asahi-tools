@@ -1,0 +1,14 @@
+[package]
+name = "net-restarter"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "net-restarter"
+path = "src/main.rs"
+
+[dependencies]
+ratatui.workspace = true
+crossterm.workspace = true
+serde.workspace = true
+serde_json.workspace = true
