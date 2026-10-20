@@ -2,6 +2,10 @@
 
 Terminal utilities for Apple Silicon Macs on Asahi Linux, plus `asahi-tui`, a launcher and dashboard.
 
+[![CI](https://github.com/Mandrusian/asahi-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/Mandrusian/asahi-tools/actions/workflows/ci.yml)
+![platform](https://img.shields.io/badge/platform-Asahi%20Linux-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+
 ## What's inside
 
 | Binary | Purpose | Needs root |
