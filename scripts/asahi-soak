@@ -1,0 +1,176 @@
+#!/bin/bash
+# asahi-soak — long-running stability test
+# usage: asahi-soak [duration]
+#        default 4h; accepts 30m, 2h, 4h, 8h, etc.
+set -u
+
+DUR="${1:-4h}"
+case "$DUR" in
+    *h) HOURS="${DUR%h}";; *m) HOURS=$(( ${DUR%m} / 60 ));; *) HOURS="$DUR";;
+esac
+HOURS="${HOURS:-4}"
+TOTAL=$(( HOURS * 120 ))  # 30s intervals
+OUT="${OUT:-/tmp/asahi-soak-$(date +%Y%m%d-%H%M%S)}"
+mkdir -p "$OUT"
+
+log() { echo "[$(date +%H:%M:%S)] $*" | tee -a "$OUT/run.log"; }
+
+log "════════ asahi-soak starting ════════"
+log "duration:   ${HOURS}h (${TOTAL} iterations × 30s)"
+log "output dir: $OUT"
+log "kernel:     $(uname -r)"
+log "cpu:        $(grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2)"
+
+# ── Baseline ──
+dmesg 2>/dev/null | tail -200 > "$OUT/dmesg-start.log" || true
+for svc in asahi-priv-daemon asahi-charge-daemon asahi-sysmon-daemon asahi-force-click; do
+    systemctl show "$svc" -p ActiveState,MemoryCurrent --value > "$OUT/${svc}-start.txt" 2>/dev/null
+done
+
+# ── Start CPU stress ──
+STRESS_PIDS=()
+NUM_CORES=$(nproc)
+log "starting $NUM_CORES yes(1) workers to stress CPU"
+for _ in $(seq 1 "$NUM_CORES"); do
+    yes > /dev/null &
+    STRESS_PIDS+=($!)
+done
+
+cleanup() {
+    log "stopping stress"
+    for p in "${STRESS_PIDS[@]}"; do kill "$p" 2>/dev/null; done
+}
+trap cleanup EXIT
+
+# ── Loop ──
+FAIL=0
+MAX_RESP=0
+ITER=0
+START=$(date +%s)
+
+while [ "$ITER" -lt "$TOTAL" ]; do
+    ITER=$(( ITER + 1 ))
+    TS=$(date +%s)
+    ELAPSED=$(( TS - START ))
+    if [ $(( ITER % 20 )) -eq 0 ]; then
+        log "iter $ITER/$TOTAL · ${ELAPSED}s elapsed · max response: ${MAX_RESP}ms · failures: $FAIL"
+    fi
+
+    # Each daemon: measure response time
+    for socket in /run/asahi-priv.sock /run/asahi-charge.sock /run/asahi-sysmon.sock; do
+        [ -S "$socket" ] || continue
+        T0=$(date +%s%N)
+        RESP=$(python3 -c "
+import socket, sys
+try:
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(2.0)
+    s.connect('$socket')
+    s.sendall(b'{\"cmd\":\"status\"}\n')
+    data = s.recv(4096)
+    print('ok' if b'\"ok\":true' in data else 'bad')
+except Exception as e:
+    print('err')
+" 2>/dev/null)
+        T1=$(date +%s%N)
+        MS=$(( (T1 - T0) / 1000000 ))
+        [ "$MS" -gt "$MAX_RESP" ] && MAX_RESP=$MS
+        if [ "$RESP" != "ok" ]; then
+            FAIL=$(( FAIL + 1 ))
+            echo "$ITER $socket $RESP ${MS}ms" >> "$OUT/failures.log"
+        fi
+        echo "$ITER $socket $RESP ${MS}ms" >> "$OUT/responses.log"
+    done
+
+    # Every 10 iterations (5 min), snapshot state
+    if [ $(( ITER % 10 )) -eq 0 ]; then
+        {
+            echo "--- iter $ITER at $(date +%H:%M:%S) ---"
+            echo "battery: $(cat /sys/class/power_supply/macsmc-battery/capacity 2>/dev/null)% ($(cat /sys/class/power_supply/macsmc-battery/status 2>/dev/null))"
+            if [ -d /sys/class/hwmon/hwmon2 ]; then
+                echo "fan1: $(cat /sys/class/hwmon/hwmon2/fan1_input 2>/dev/null) rpm"
+                for t in /sys/class/hwmon/hwmon2/temp*_input; do
+                    [ -f "$t" ] && echo "$(basename "$t"): $(cat "$t" 2>/dev/null)"
+                done
+            fi
+            echo "load: $(cat /proc/loadavg)"
+            echo "mem:  $(grep -E 'MemTotal|MemAvailable' /proc/meminfo | tr '\n' ' ')"
+            for svc in asahi-priv-daemon asahi-charge-daemon asahi-sysmon-daemon asahi-force-click; do
+                echo "$svc: $(systemctl show $svc -p ActiveState,MemoryCurrent --value | tr '\n' ' ')"
+            done
+        } >> "$OUT/state.log"
+    fi
+
+    sleep 30
+done
+
+# ── Report ──
+dmesg 2>/dev/null | tail -200 > "$OUT/dmesg-end.log" || true
+for svc in asahi-priv-daemon asahi-charge-daemon asahi-sysmon-daemon asahi-force-click; do
+    systemctl show "$svc" -p ActiveState,MemoryCurrent --value > "$OUT/${svc}-end.txt" 2>/dev/null
+done
+
+TOTAL_ITER=$ITER
+TOTAL_REQ=$(( TOTAL_ITER * 3 ))
+
+cat > "$OUT/REPORT.md" <<REPORT
+# asahi-soak report
+
+**Run:** $(date -Iseconds)
+**Duration:** ${HOURS}h (${TOTAL_ITER} iterations × 30s)
+**Kernel:** $(uname -r)
+**CPU:** $(grep 'model name' /proc/cpuinfo | head -1 | cut -d: -f2)
+
+## Results
+
+| Metric | Value |
+|---|---|
+| Iterations | $TOTAL_ITER |
+| Total requests | $TOTAL_REQ (3 daemons × iterations) |
+| Failures | **$FAIL** |
+| Worst response | **${MAX_RESP}ms** |
+
+## Daemon state (start → end)
+
+REPORT
+
+for svc in asahi-priv-daemon asahi-charge-daemon asahi-sysmon-daemon asahi-force-click; do
+    S=$(cat "$OUT/${svc}-start.txt" 2>/dev/null | tr '\n' ' ')
+    E=$(cat "$OUT/${svc}-end.txt" 2>/dev/null | tr '\n' ' ')
+    echo "**$svc**: $S → $E" >> "$OUT/REPORT.md"
+    echo "" >> "$OUT/REPORT.md"
+done
+
+cat >> "$OUT/REPORT.md" <<REPORT
+
+## dmesg errors during run
+
+\`\`\`
+$(diff <(cat "$OUT/dmesg-start.log" 2>/dev/null) <(cat "$OUT/dmesg-end.log" 2>/dev/null) | grep '^>' | grep -iE 'error|warn|fail|oops|panic' | head -20 || echo "no new kernel errors")
+\`\`\`
+
+## What was tested
+
+- **CPU stress**: $NUM_CORES × \`yes > /dev/null\` for the full ${HOURS}h
+- **Daemon sockets**: every 30s, hit \`/run/asahi-priv.sock\`, \`/run/asahi-charge.sock\`, \`/run/asahi-sysmon.sock\`
+- **Response time tracking**: every request timed, worst recorded
+- **Memory growth**: daemon RSS sampled every 5 min
+- **Battery/thermal/fans**: state snapshotted every 5 min
+
+## Files
+
+- \`run.log\` — timeline
+- \`responses.log\` — per-request timing (${TOTAL_REQ} lines)
+- \`failures.log\` — any failed requests (should be empty)
+- \`state.log\` — battery/thermal/memory every 5 min
+- \`dmesg-{start,end}.log\` — kernel messages
+- \`*-{start,end}.txt\` — per-daemon ActiveState + MemoryCurrent
+
+REPORT
+
+log "════════ done ════════"
+log "Report: $OUT/REPORT.md"
+log "Failures: $FAIL"
+log "Worst response: ${MAX_RESP}ms"
+
+cat "$OUT/REPORT.md"

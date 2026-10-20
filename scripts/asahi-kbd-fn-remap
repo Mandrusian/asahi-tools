@@ -14,7 +14,7 @@ MODPROBE_CONF="/etc/modprobe.d/hid_apple.conf"
 #   3 = auto
 mode_to_num() {
     case "$1" in
-        media) echo 0 ;;
+        media) echo 1 ;;
         fn|fkeys|fkeysfirst) echo 2 ;;
         auto) echo 3 ;;
         *) return 1 ;;

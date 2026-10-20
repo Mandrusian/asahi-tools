@@ -43,8 +43,14 @@ pub fn build() -> adw::PreferencesPage {
     fn_btn.set_valign(gtk::Align::Center);
     fn_row.add_suffix(&fn_btn);
     fn_btn.connect_clicked(move |_| {
-        let cur = asahi_core::priv_daemon::get_fnmode().unwrap_or(0);
-        let next = (cur + 1) % 4;
+        let cur = asahi_core::priv_daemon::get_fnmode().unwrap_or(1);
+        // Cycle only through useful modes: media(1) → fn(2) → auto(3) → media(1)
+        // Never land on 0 (disabled) — that kills brightness/volume entirely.
+        let next = match cur {
+            1 => 2,
+            2 => 3,
+            _ => 1,
+        };
         let _ = asahi_core::priv_daemon::set_fnmode(next);
     });
     kbd_group.add(&fn_row);

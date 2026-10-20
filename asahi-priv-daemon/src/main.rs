@@ -11,10 +11,25 @@ use serde::{Deserialize, Serialize};
 const SOCKET: &str = "/run/asahi-priv.sock";
 const KBD: &str = "/sys/class/leds/kbd_backlight/brightness";
 const KBD_MAX: &str = "/sys/class/leds/kbd_backlight/max_brightness";
-const DISP: &str = "/sys/class/backlight/apple-panel-backlight/brightness";
-const DISP_MAX: &str = "/sys/class/backlight/apple-panel-backlight/max_brightness";
 const PROFILE: &str = "/sys/firmware/acpi/platform_profile";
 const FNMODE: &str = "/sys/module/hid_apple/parameters/fnmode";
+
+const DISP_PATHS: &[&str] = &[
+    "/sys/class/backlight/apple-panel-bl/brightness",
+    "/sys/class/backlight/apple-panel-backlight/brightness",
+    "/sys/class/backlight/apple_dcp_bl/brightness",
+    "/sys/class/backlight/dcp-backlight/brightness",
+    "/sys/class/backlight/edp-backlight/brightness",
+    "/sys/class/backlight/panel0-backlight/brightness",
+];
+
+fn find_disp() -> Option<&'static str> {
+    DISP_PATHS.iter().copied().find(|p| std::path::Path::new(p).exists())
+}
+
+fn disp_max_path() -> Option<String> {
+    find_disp().map(|p| p.replace("brightness", "max_brightness"))
+}
 
 const ALLOWED_MODULES: &[&str] = &[
     "brcmfmac", "hci_bcm4377", "macsmc_hwmon",
@@ -97,16 +112,26 @@ fn handle(req: Request) -> serde_json::Value {
                 Err(e) => serde_json::json!({"ok": false, "error": e}),
             }
         }
-        Request::GetDisplay => serde_json::json!({
-            "ok": true,
-            "current": read_u32(DISP),
-            "max": read_u32(DISP_MAX).unwrap_or(100),
-        }),
+        Request::GetDisplay => {
+            let path = find_disp();
+            let max = disp_max_path().and_then(|p| read_u32(&p)).unwrap_or(100);
+            serde_json::json!({
+                "ok": path.is_some(),
+                "current": path.and_then(read_u32),
+                "max": max,
+                "path": path,
+                "error": if path.is_none() { Some("no backlight device") } else { None },
+            })
+        }
         Request::SetDisplay { value } => {
-            let max = read_u32(DISP_MAX).unwrap_or(100);
+            let path = match find_disp() {
+                Some(p) => p,
+                None => return serde_json::json!({"ok": false, "error": "no backlight device"}),
+            };
+            let max = disp_max_path().and_then(|p| read_u32(&p)).unwrap_or(100);
             let v = value.min(max);
-            match write_val(DISP, &v.to_string()) {
-                Ok(_) => serde_json::json!({"ok": true, "value": v}),
+            match write_val(path, &v.to_string()) {
+                Ok(_) => serde_json::json!({"ok": true, "value": v, "path": path}),
                 Err(e) => serde_json::json!({"ok": false, "error": e}),
             }
         }
@@ -153,8 +178,8 @@ fn handle(req: Request) -> serde_json::Value {
             "ok": true,
             "kbd": read_u32(KBD),
             "kbd_max": read_u32(KBD_MAX),
-            "display": read_u32(DISP),
-            "display_max": read_u32(DISP_MAX),
+            "display": find_disp().and_then(read_u32),
+            "display_max": disp_max_path().and_then(|p| read_u32(&p)),
             "profile": std::fs::read_to_string(PROFILE).ok().map(|s| s.trim().to_string()),
             "fnmode": read_u32(FNMODE),
         }),

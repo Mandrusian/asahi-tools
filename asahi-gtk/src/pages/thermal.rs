@@ -32,11 +32,13 @@ pub fn build() -> adw::PreferencesPage {
     fan1_row.add_suffix(&max_btn);
     fans_group.add(&fan1_row);
 
-    let slider_row = adw::ActionRow::builder().title("Manual target").subtitle("—").build();
+    let slider_row = adw::ActionRow::builder().title("Manual target").build();
     let slider = gtk::Scale::with_range(gtk::Orientation::Horizontal, 1000.0, 6500.0, 250.0);
     slider.set_hexpand(true);
     slider.set_valign(gtk::Align::Center);
-    slider.set_size_request(300, -1);
+    slider.set_draw_value(true);
+    slider.set_margin_start(12);
+    slider.set_margin_end(12);
     slider_row.add_suffix(&slider);
     fans_group.add(&slider_row);
 

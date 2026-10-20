@@ -39,6 +39,7 @@ pub struct Response {
     #[serde(default)] pub active: Option<bool>,
     #[serde(default)] pub enabled: Option<bool>,
     #[serde(default)] pub detail: Option<String>,
+    #[serde(default)] pub path: Option<String>,
 }
 
 pub fn query(req: &Request) -> Option<Response> {
