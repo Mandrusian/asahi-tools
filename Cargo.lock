@@ -108,7 +108,7 @@ checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
 
 [[package]]
 name = "asahi-battery-health"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "chrono",
@@ -121,7 +121,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-charge-daemon"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "serde",
@@ -130,7 +130,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -139,7 +139,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-gtk"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "glib",
@@ -151,7 +151,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-kernel-manager"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "crossterm",
  "ratatui",
@@ -159,14 +159,14 @@ dependencies = [
 
 [[package]]
 name = "asahi-notify-hub"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
 ]
 
 [[package]]
 name = "asahi-power-draw"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "crossterm",
@@ -175,7 +175,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-priv-daemon"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -183,7 +183,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-sleep-log"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "chrono",
@@ -192,7 +192,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-trackpad"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "eframe",
@@ -201,7 +201,7 @@ dependencies = [
 
 [[package]]
 name = "asahi-tui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "crossterm",
@@ -2146,7 +2146,7 @@ dependencies = [
 
 [[package]]
 name = "net-restarter"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "crossterm",
  "ratatui",
@@ -3173,7 +3173,7 @@ dependencies = [
 
 [[package]]
 name = "sys-monitor"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "asahi-core",
  "crossterm",
