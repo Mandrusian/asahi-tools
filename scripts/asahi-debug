@@ -1,0 +1,100 @@
+#!/bin/bash
+# asahi-debug — comprehensive health check for asahi-tools stack
+# Verifies: daemons running, sockets responding with valid JSON, configs present
+set -u
+
+PASS=0
+FAIL=0
+
+ok()   { echo "  ✓ $*"; PASS=$((PASS + 1)); }
+bad()  { echo "  ✗ $*"; FAIL=$((FAIL + 1)); }
+info() { echo "  · $*"; }
+
+echo "════════ asahi-tools debug ════════"
+echo
+
+echo "=== Daemons ==="
+for s in asahi-priv-daemon asahi-charge-daemon asahi-sysmon-daemon asahi-force-click; do
+    state=$(systemctl is-active "$s" 2>/dev/null || echo unknown)
+    [ "$state" = "active" ] && ok "$s: $state" || bad "$s: $state"
+done
+for s in asahi-notify-hub asahi-lid; do
+    state=$(systemctl --user is-active "$s" 2>/dev/null || echo unknown)
+    [ "$state" = "active" ] && ok "$s (user): $state" || bad "$s (user): $state"
+done
+
+echo
+echo "=== Sockets (with proper newline-terminated read) ==="
+python3 <<'PY'
+import socket, json, sys
+
+checks = [
+    ("/run/asahi-priv.sock", b'{"cmd":"status"}\n', "priv"),
+    ("/run/asahi-charge.sock", b'{"cmd":"status"}\n', "charge"),
+    ("/run/asahi-sysmon.sock", b'{"cmd":"status"}\n', "sysmon"),
+]
+
+for path, req, name in checks:
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(3)
+        s.connect(path)
+        s.sendall(req)
+        buf = b''
+        while b'\n' not in buf:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            buf += chunk
+        s.close()
+        if not buf:
+            print(f"  ✗ {name}: EMPTY response from {path}")
+            continue
+        try:
+            d = json.loads(buf)
+            if d.get('ok'):
+                print(f"  ✓ {name}: valid JSON, ok=true")
+            else:
+                print(f"  ✗ {name}: ok=false ({d.get('error', 'no error msg')})")
+        except json.JSONDecodeError as e:
+            print(f"  ✗ {name}: INVALID JSON: {e}")
+            print(f"     raw: {buf!r}")
+    except Exception as e:
+        print(f"  ✗ {name}: {e}")
+PY
+
+echo
+echo "=== Backlight ==="
+if [ -f /sys/class/backlight/apple-panel-bl/brightness ]; then
+    cur=$(cat /sys/class/backlight/apple-panel-bl/brightness)
+    max=$(cat /sys/class/backlight/apple-panel-bl/max_brightness)
+    ok "apple-panel-bl: $cur / $max"
+else
+    bad "apple-panel-bl missing"
+fi
+
+echo
+echo "=== Fnmode ==="
+cur=$(cat /sys/module/hid_apple/parameters/fnmode 2>/dev/null || echo "?")
+persisted=$(grep -o 'fnmode=[0-9]' /etc/modprobe.d/hid_apple.conf 2>/dev/null | head -1 || echo "MISSING")
+[ "$cur" = "1" ] && ok "runtime: fnmode=1 (media keys default)" || bad "runtime: fnmode=$cur (want 1)"
+echo "$persisted" | grep -q "fnmode=1" && ok "persisted: $persisted" || bad "persisted: $persisted (want fnmode=1)"
+
+echo
+echo "=== Config files ==="
+for f in ~/.config/asahi-tools/profiles.json \
+         ~/.config/asahi-tools/trackpad.json \
+         ~/.config/asahi-tools/notifications.json \
+         ~/.config/asahi-tools/als.json; do
+    [ -f "$f" ] && ok "$(basename "$f")" || bad "$(basename "$f") missing"
+done
+
+echo
+echo "=== Binaries ==="
+for b in asahi-tui asahi-gtk asahi-priv-daemon asahi-force-click asahi-soak asahi; do
+    [ -x ~/.local/bin/$b ] && ok "~/.local/bin/$b" || bad "$b missing"
+done
+
+echo
+echo "════════ $PASS passed, $FAIL failed ════════"
+exit $([ "$FAIL" -eq 0 ] && echo 0 || echo 1)
