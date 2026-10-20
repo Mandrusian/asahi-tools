@@ -24,6 +24,24 @@ Terminal utilities for Apple Silicon Macs on Asahi Linux, plus `asahi-tui`, a la
 - `nmcli` (NetworkManager) and `bluetoothctl` (BlueZ) for the network tool
 - Rust 1.75+ stable
 
+## Install
+
+One-liner (downloads the aarch64 release, symlinks into `~/.local/bin`, appends to your shell rc):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Mandrusian/asahi-tools/main/install.sh | sh
+```
+
+With passwordless sudo rules:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/Mandrusian/asahi-tools/main/install.sh | sh -s -- --sudoers
+```
+
+Update: same command. Uninstall: `... | sh -s -- --uninstall`. Build from source: `... | sh -s -- --source`.
+
+Installer flags: `--version vX.Y.Z`, `--bin-dir DIR`, `--install-dir DIR`.
+
 ## Build
 
     cargo build --release --workspace
