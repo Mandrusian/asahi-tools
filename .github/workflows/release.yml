@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -19,34 +19,33 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install aarch64 cross linker
+      - name: Install cross-compilation toolchain
         run: |
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      # Build only crates that cross-compile cleanly from x86_64.
-      # GUI crates (asahi-gtk, asahi-trackpad-viz, asahi-gui) need native
-      # GTK/GL headers for the target arch and are built by `install.sh
-      # --source` on the user's machine instead.
-      - name: Build CLI + TUI + daemons
+      # Build ONLY the CLI tools and daemons. 
+      # GTK cross-compilation is not supported in this simple runner.
+      - name: Build CLI tools
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
           cargo build --release --target aarch64-unknown-linux-gnu \
             -p asahi-core \
             -p asahi-tui \
-            -p kbd-backlight \
-            -p battery-limiter \
-            -p net-restarter \
-            -p sys-monitor \
             -p asahi-battery-health \
             -p asahi-charge-daemon \
-            -p asahi-power-draw \
-            -p asahi-sleep-log \
             -p asahi-charge-notify \
-            -p asahi-notify-hub \
             -p asahi-kernel-manager \
-            -p asahi-priv-daemon
+            -p asahi-notify-hub \
+            -p asahi-power-draw \
+            -p asahi-priv-daemon \
+            -p asahi-sensor-explorer \
+            -p asahi-sleep-log \
+            -p battery-limiter \
+            -p kbd-backlight \
+            -p net-restarter \
+            -p sys-monitor
 
       - name: Package
         run: |
@@ -54,18 +53,20 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           DIR="asahi-tools-${TAG}-aarch64-unknown-linux-gnu"
           mkdir -p "dist/${DIR}/bin" "dist/${DIR}/assets"
-          for b in asahi-tui kbd-backlight battery-limiter net-restarter \
-                   sys-monitor asahi-battery-health asahi-charge-daemon \
-                   asahi-power-draw asahi-sleep-log asahi-charge-notify \
-                   asahi-notify-hub asahi-kernel-manager asahi-trackpad-viz \
-                   asahi-force-click asahi-priv-daemon sysmon-daemon; do
+          
+          for b in asahi-tui asahi-battery-health asahi-charge-daemon \
+                   asahi-charge-notify asahi-kernel-manager asahi-notify-hub \
+                   asahi-power-draw asahi-priv-daemon asahi-sleep-log \
+                   battery-limiter kbd-backlight net-restarter sys-monitor; do
             if [ -f "target/aarch64-unknown-linux-gnu/release/${b}" ]; then
               cp "target/aarch64-unknown-linux-gnu/release/${b}" "dist/${DIR}/bin/${b}"
             fi
           done
+          
           cp README.md LICENSE "dist/${DIR}/"
           cp -r assets/* "dist/${DIR}/assets/" 2>/dev/null || true
           cp -r scripts "dist/${DIR}/" 2>/dev/null || true
+          
           cd dist
           tar -czf "../${DIR}.tar.gz" "${DIR}"
           cd ..
@@ -75,15 +76,13 @@ jobs:
         with:
           files: |
             asahi-tools-*.tar.gz
-            asahi-tools-*.tar.gz.sha256
+            asahi-tools-*.sha256
           generate_release_notes: true
           prerelease: true
           body: |
-            Pre-built binaries for **aarch64-unknown-linux-gnu**.
-
-            **Bundled:** TUI launcher, all CLI tools, all daemons, scripts.
-
-            **Not bundled** (build from source with `install.sh --source`):
-            `asahi-gtk` (GTK4 GUI), `asahi-trackpad-viz`, `asahi-gui`.
-
-            See [README](https://github.com/Mandrusian/asahi-tools#readme) for install instructions.
+            **⚠️ ALPHA RELEASE**
+            
+            This is an unstable alpha build. Expect rough edges.
+            
+            Includes: TUI launcher, CLI tools, daemons, and scripts.
+            **Excludes:** `asahi-gtk` (GUI must be built from source).
