@@ -2,98 +2,59 @@ use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
 use std::process::Command;
-use crate::helper::{find_binary, spawn_pkexec};
 
-fn wifi_info() -> (String, String, String, u32) {
-    let dev = Command::new("nmcli").args(["-t", "-f", "DEVICE,TYPE", "dev"]).output().ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines()
-            .find_map(|l| { let (d, t) = l.split_once(':')?; (t == "wifi").then(|| d.to_string()) }))
-        .unwrap_or_default();
-    if dev.is_empty() { return ("(none)".into(), "-".into(), "-".into(), 0); }
-    let (ssid, sig) = Command::new("nmcli").args(["-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"]).output()
-        .ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines()
-            .find_map(|l| {
-                let mut it = l.rsplitn(3, ':');
-                let sig: u32 = it.next()?.parse().ok()?;
-                let ssid = it.next()?.to_string();
-                let act = it.next()?;
-                act.contains('*').then_some((ssid, sig))
-            }))
-        .unwrap_or(("-".into(), 0));
-    let ip = Command::new("ip").args(["-j", "addr", "show", &dev]).output().ok()
-        .and_then(|o| {
-            #[derive(serde::Deserialize)] struct A { family: String, local: String }
-            #[derive(serde::Deserialize)] struct L { #[serde(default)] addr_info: Vec<A> }
-            let v: Vec<L> = serde_json::from_slice(&o.stdout).ok()?;
-            v.first().and_then(|l| l.addr_info.iter().find(|a| a.family == "inet").map(|a| a.local.clone()))
-        })
-        .unwrap_or_else(|| "-".into());
-    (ssid, ip, dev, sig)
+fn get_net_info() -> Vec<(&'static str, String)> {
+    let mut info = vec![("SSID", "Unknown"), ("IPv4", "Unknown"), ("MAC", "Unknown"), ("Signal", "Unknown"), ("DNS", "Unknown")];
+    if let Ok(out) = Command::new("nmcli").args(["-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"]).output() {
+        let txt = String::from_utf8_lossy(&out.stdout);
+        for line in txt.lines() {
+            if line.starts_with('*') {
+                let parts: Vec<&str> = line.split(':').collect();
+                if parts.len() >= 3 { info[0].1 = Box::leak(parts[1].to_string().into_boxed_str()); info[3].1 = Box::leak(format!("{}%", parts[2]).into_boxed_str()); }
+            }
+        }
+    }
+    if let Ok(out) = Command::new("ip").args(["-j", "route", "get", "1.1.1.1"]).output() {
+        if let Ok(json) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout) {
+            if let Some(obj) = json.first() {
+                if let Some(dev) = obj.get("dev").and_then(|v| v.as_str()) {
+                    if let Ok(addr_out) = Command::new("ip").args(["-j", "addr", "show", dev]).output() {
+                        if let Ok(addr_json) = serde_json::from_slice::<Vec<serde_json::Value>>(&addr_out.stdout) {
+                            if let Some(iface) = addr_json.first() {
+                                if let Some(addr_info) = iface.get("addr_info").and_then(|v| v.as_array()) {
+                                    for addr in addr_info {
+                                        if addr.get("family").and_then(|v| v.as_str()) == Some("inet") {
+                                            info[1].1 = Box::leak(addr.get("local").and_then(|v| v.as_str()).unwrap_or("").to_string().into_boxed_str());
+                                        }
+                                    }
+                                }
+                                info[2].1 = Box::leak(iface.get("address").and_then(|v| v.as_str()).unwrap_or("").to_string().into_boxed_str());
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    info.into_iter().map(|(k, v)| (k, v.to_string())).collect()
 }
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
-
-    let wifi_group = adw::PreferencesGroup::builder().title("Wi-Fi").build();
-    let ssid_row = adw::ActionRow::builder().title("SSID").subtitle("…").build();
-    let ip_row = adw::ActionRow::builder().title("IPv4").subtitle("…").build();
-    let sig_row = adw::ActionRow::builder().title("Signal").subtitle("…").build();
-    wifi_group.add(&ssid_row);
-    wifi_group.add(&ip_row);
-    wifi_group.add(&sig_row);
-
-    let restart_wifi = gtk::Button::with_label("Restart Wi-Fi module");
-    restart_wifi.set_margin_top(4);
-    restart_wifi.set_margin_bottom(4);
-    restart_wifi.connect_clicked(move |_| {
-        match asahi_core::priv_daemon::restart_module("brcmfmac") {
-            Ok(()) => eprintln!("network: wifi module restarted"),
-            Err(e) => eprintln!("network: wifi restart failed: {}", e),
+    let g = adw::PreferencesGroup::builder().title("Wi-Fi Info").build();
+    for (label, val) in get_net_info() {
+        let row = adw::ActionRow::builder().title(label).subtitle(&val).build();
+        if label == "IPv4" || label == "MAC" {
+            let btn = gtk::Button::from_icon_name("edit-copy-symbolic"); btn.set_valign(gtk::Align::Center); btn.set_has_frame(false);
+            let val_clone = val.clone();
+            btn.connect_clicked(move |_| { if let Some(display) = gtk::gdk::Display::default() { display.clipboard().set_text(&val_clone); } });
+            row.add_suffix(&btn);
         }
-    });
-    wifi_group.add(&restart_wifi);
-
-    let net_tool_btn = gtk::Button::with_label("Open net-restarter (scan + restart)");
-    net_tool_btn.set_margin_bottom(4);
-    net_tool_btn.connect_clicked(move |_| { crate::helper::spawn_in_terminal("net-restarter"); });
-    wifi_group.add(&net_tool_btn);
-
-    page.add(&wifi_group);
-
-    let bt_group = adw::PreferencesGroup::builder().title("Bluetooth").build();
-    let bt_row = adw::ActionRow::builder().title("State").subtitle("…").build();
-    bt_group.add(&bt_row);
-    let restart_bt = gtk::Button::with_label("Restart Bluetooth module");
-    restart_bt.set_margin_top(4);
-    restart_bt.set_margin_bottom(4);
-    restart_bt.connect_clicked(move |_| {
-        match asahi_core::priv_daemon::restart_module("hci_bcm4377") {
-            Ok(()) => eprintln!("network: bluetooth module restarted"),
-            Err(e) => eprintln!("network: bluetooth restart failed: {}", e),
-        }
-    });
-    bt_group.add(&restart_bt);
-    page.add(&bt_group);
-
-    {
-        let ssid_row = ssid_row.clone();
-        let ip_row = ip_row.clone();
-        let sig_row = sig_row.clone();
-        let bt_row = bt_row.clone();
-        glib::timeout_add_seconds_local(3, move || {
-            let (ssid, ip, _, sig) = wifi_info();
-            ssid_row.set_subtitle(&ssid);
-            ip_row.set_subtitle(&ip);
-            sig_row.set_subtitle(&format!("{}%", sig));
-            let bt = Command::new("bluetoothctl").args(["devices", "Connected"]).output()
-                .ok().map(|o| String::from_utf8_lossy(&o.stdout).lines().filter(|l| l.starts_with("Device ")).count())
-                .unwrap_or(0);
-            bt_row.set_subtitle(&if bt == 0 { "on · 0 connected".to_string() } else { format!("on · {} connected", bt) });
-            glib::ControlFlow::Continue
-        });
+        g.add(&row);
     }
-
-    let _ = find_binary;  // silence unused import lint
-    page
+    page.add(&g);
+    let g2 = adw::PreferencesGroup::builder().title("Actions").build();
+    let btn_restart = gtk::Button::with_label("Restart Wi-Fi Module"); btn_restart.set_margin_top(4); btn_restart.set_margin_bottom(4);
+    btn_restart.connect_clicked(move |_| { let _ = asahi_core::priv_daemon::restart_module("brcmfmac"); });
+    g2.add(&btn_restart); page.add(&g2); page
 }

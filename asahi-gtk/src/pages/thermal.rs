@@ -1,87 +1,42 @@
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
-use asahi_core::{find_fan_hwmon, scan_temps, scan_fans, sysmon};
+use asahi_core::sysmon;
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();
 
-    let temps_group = adw::PreferencesGroup::builder().title("Temperatures").build();
-    let rows: Vec<adw::ActionRow> = (1..=8)
-        .map(|i| adw::ActionRow::builder()
-            .title(format!("Sensor {}", i))
-            .subtitle("—")
-            .visible(false)
-            .build())
-        .collect();
-    for r in &rows { temps_group.add(r); }
-    page.add(&temps_group);
-
-    let fans_group = adw::PreferencesGroup::builder()
-        .title("Fans")
-        .description("Manual target pressure pins the fan; Auto returns to SMC curve")
-        .build();
-
-    let fan1_row = adw::ActionRow::builder().title("Fan 1").subtitle("—").build();
-    let auto_btn = gtk::Button::with_label("Auto");
-    auto_btn.set_valign(gtk::Align::Center);
-    let max_btn = gtk::Button::with_label("Max");
-    max_btn.set_valign(gtk::Align::Center);
-    fan1_row.add_suffix(&auto_btn);
-    fan1_row.add_suffix(&max_btn);
-    fans_group.add(&fan1_row);
-
-    let slider_row = adw::ActionRow::builder().title("Manual target").build();
-    let slider = gtk::Scale::with_range(gtk::Orientation::Horizontal, 1000.0, 6500.0, 250.0);
-    slider.set_hexpand(true);
-    slider.set_valign(gtk::Align::Center);
-    slider.set_draw_value(true);
-    slider.set_margin_start(12);
-    slider.set_margin_end(12);
-    slider_row.add_suffix(&slider);
-    fans_group.add(&slider_row);
-
-    {
-        slider.connect_value_changed(move |s| {
-            let _ = sysmon::set_fan(1, s.value() as u32);
-        });
+    let g1 = adw::PreferencesGroup::builder().title("Temperatures").build();
+    for (name, temp) in crate::helper::get_hwmon_sensors() {
+        let row = adw::ActionRow::builder().title(&name).subtitle(&format!("{:.1} C", temp)).build();
+        let bar = gtk::LevelBar::new(); 
+        bar.set_min_value(0.0); bar.set_max_value(100.0); bar.set_value(temp); 
+        bar.set_valign(gtk::Align::Center); bar.set_size_request(150, -1);
+        if temp > 80.0 { bar.add_css_class("error"); } else if temp >= 60.0 { bar.add_css_class("warning"); } else { bar.add_css_class("success"); }
+        row.add_suffix(&bar);
+        g1.add(&row);
     }
-    {
-        auto_btn.connect_clicked(move |_| { let _ = sysmon::auto_fan(1); });
-    }
-    {
-        max_btn.connect_clicked(move |_| { let _ = sysmon::max_fan(1); });
-    }
+    page.add(&g1);
 
-    page.add(&fans_group);
+    let g2 = adw::PreferencesGroup::builder().title("Fans").build();
+    let fans = crate::helper::get_hwmon_fans();
+    for (i, (name, rpm, min, max)) in fans.iter().enumerate() {
+        let row = adw::ActionRow::builder().title(name).subtitle(&format!("{} rpm", rpm)).build();
+        let btn_a = gtk::Button::with_label("Auto"); btn_a.set_valign(gtk::Align::Center);
+        let btn_m = gtk::Button::with_label("Max"); btn_m.set_valign(gtk::Align::Center);
+        row.add_suffix(&btn_a); row.add_suffix(&btn_m);
+        let idx = (i + 1) as u32;
+        btn_a.connect_clicked(move |_| { let _ = sysmon::auto_fan(idx); });
+        btn_m.connect_clicked(move |_| { let _ = sysmon::max_fan(idx); });
+        g2.add(&row);
 
-    // Refresh
-    {
-        let rows = rows.clone();
-        let fan1_row = fan1_row.clone();
-        let slider_row = slider_row.clone();
-        glib::timeout_add_seconds_local(2, move || {
-            if let Some(h) = find_fan_hwmon() {
-                let temps = scan_temps(&h);
-                let fans = scan_fans(&h);
-                for (i, r) in rows.iter().enumerate() {
-                    if let Some(t) = temps.get(i) {
-                        r.set_title(&t.name);
-                        r.set_subtitle(&format!("{:.1} °C", t.celsius));
-                        r.set_visible(true);
-                    } else {
-                        r.set_visible(false);
-                    }
-                }
-                if let Some(f) = fans.first() {
-                    fan1_row.set_subtitle(&format!("{} rpm{}", f.rpm,
-                        f.target.map(|t| format!(" (target {})", t)).unwrap_or_default()));
-                    slider_row.set_subtitle(&format!("{} rpm", f.target.unwrap_or(f.rpm)));
-                }
-            }
-            glib::ControlFlow::Continue
-        });
+        let slider_row = adw::ActionRow::builder().title("Manual target").build();
+        let slider = gtk::Scale::with_range(gtk::Orientation::Horizontal, *min as f64, *max as f64, 100.0);
+        slider.set_hexpand(true); slider.set_size_request(250, -1); slider.set_valign(gtk::Align::Center);
+        slider_row.add_suffix(&slider);
+        slider.connect_value_changed(move |s| { let _ = sysmon::set_fan(idx, s.value() as u32); });
+        g2.add(&slider_row);
     }
-
+    page.add(&g2);
     page
 }

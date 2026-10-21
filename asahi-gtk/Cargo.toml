@@ -14,3 +14,4 @@ serde_json.workspace = true
 gtk = { package = "gtk4", version = "0.9", features = ["v4_16"] }
 libadwaita = { version = "0.7", features = ["v1_6"] }
 glib = "0.20"
+evdev = "0.12"

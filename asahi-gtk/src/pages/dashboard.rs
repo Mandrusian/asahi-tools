@@ -1,275 +1,220 @@
+use libadwaita as adw;
 use adw::prelude::*;
 use gtk::prelude::*;
-use libadwaita as adw;
-use asahi_core::{get_battery_capacity, get_battery_status, find_fan_hwmon, scan_temps, scan_fans};
+use gtk::glib;
+use std::rc::Rc;
+use std::cell::{Cell, RefCell};
+use crate::widgets::{self, WidgetInstance, WidgetSize, config::DashboardConfig};
 
-const WIDGETS: &[&str] = &["battery", "thermal", "fans", "memory", "power", "actions"];
+pub fn build() -> gtk::Widget {
+    let cfg: Rc<RefCell<DashboardConfig>> = Rc::new(RefCell::new(widgets::config::load()));
+    let edit: Rc<Cell<bool>> = Rc::new(Cell::new(false));
+    let holder: Rc<RefCell<Option<Rc<dyn Fn()>>>> = Rc::new(RefCell::new(None));
 
-fn load_widget_config() -> Vec<String> {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
-    let p = home.join(".config/asahi-tools/dashboard.json");
-    if let Ok(txt) = std::fs::read_to_string(&p) {
-        #[derive(serde::Deserialize)]
-        struct Cfg { widgets: Vec<String> }
-        if let Ok(c) = serde_json::from_str::<Cfg>(&txt) {
-            return c.widgets;
-        }
-    }
-    WIDGETS.iter().map(|s| s.to_string()).collect()
-}
+    let root = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let sw = gtk::ScrolledWindow::new();
+    sw.set_child(Some(&root));
+    sw.set_vexpand(true);
+    sw.set_hexpand(true);
+    sw.set_policy(gtk::PolicyType::Never, gtk::PolicyType::Automatic);
 
-fn widget_enabled(name: &str, cfg: &[String]) -> bool {
-    cfg.iter().any(|w| w == name)
-}
+    let rebuild: Rc<dyn Fn()> = {
+        let root = root.clone();
+        let cfg = cfg.clone();
+        let edit = edit.clone();
+        let holder = holder.clone();
 
-fn read_mem() -> (f64, f64) {
-    if let Ok(t) = std::fs::read_to_string("/proc/meminfo") {
-        let mut total = 0u64; let mut avail = 0u64;
-        for l in t.lines() {
-            if let Some(r) = l.strip_prefix("MemTotal:") {
-                total = r.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
+        Rc::new(move || {
+            // Clear
+            while let Some(c) = root.first_child() {
+                root.remove(&c);
             }
-            if let Some(r) = l.strip_prefix("MemAvailable:") {
-                avail = r.split_whitespace().next().and_then(|v| v.parse().ok()).unwrap_or(0);
-            }
-        }
-        let f = |kb: u64| kb as f64 / 1024.0 / 1024.0;
-        return (f(total.saturating_sub(avail)), f(total));
-    }
-    (0.0, 0.0)
-}
 
-fn read_power_rails() -> Vec<(String, f64)> {
-    let hw = match find_fan_hwmon() { Some(h) => h, None => return Vec::new() };
-    let mut out = Vec::new();
-    if let Ok(rd) = std::fs::read_dir(&hw) {
-        for e in rd.flatten() {
-            let n = e.file_name().to_string_lossy().to_string();
-            if n.starts_with("power") && n.ends_with("_input") {
-                if let Ok(s) = std::fs::read_to_string(e.path()) {
-                    if let Ok(v) = s.trim().parse::<f64>() {
-                        out.push((n.trim_end_matches("_input").to_string(), v / 1_000_000.0));
+            // Retrieve self-reference (callable form)
+            let this_rebuild: Rc<dyn Fn()> = match holder.borrow().as_ref() {
+                Some(r) => r.clone(),
+                None => return,
+            };
+
+            // Container with margins
+            let vbox = gtk::Box::new(gtk::Orientation::Vertical, 16);
+            vbox.set_margin_start(24);
+            vbox.set_margin_end(24);
+            vbox.set_margin_top(24);
+            vbox.set_margin_bottom(24);
+
+            // Header
+            let header = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+            let title = gtk::Label::new(None);
+            title.set_markup("<span size='large' weight='bold'>Dashboard</span>");
+            title.set_xalign(0.0);
+            title.set_hexpand(true);
+            header.append(&title);
+
+            let edit_btn = gtk::Button::with_label(if edit.get() { "Done" } else { "Edit Dashboard" });
+            if edit.get() { edit_btn.add_css_class("suggested-action"); }
+            header.append(&edit_btn);
+
+            let add_btn = gtk::Button::with_label("Add Widget");
+            add_btn.add_css_class("suggested-action");
+            add_btn.set_visible(edit.get());
+            header.append(&add_btn);
+
+            let reset_btn = gtk::Button::with_label("Reset");
+            reset_btn.add_css_class("destructive-action");
+            reset_btn.set_visible(edit.get());
+            header.append(&reset_btn);
+
+            vbox.append(&header);
+
+            // Grid
+            let grid = gtk::Grid::new();
+            grid.set_column_spacing(16);
+            grid.set_row_spacing(16);
+            grid.set_column_homogeneous(true);
+
+            let mut sorted: Vec<WidgetInstance> = cfg.borrow().widgets.clone();
+            sorted.sort_by_key(|w| w.order);
+
+            let mut col: i32 = 0;
+            let mut row: i32 = 0;
+
+            for inst in &sorted {
+                let Some(def) = widgets::find_def(&inst.widget_type) else { continue };
+                let content = (def.build)(inst);
+
+                let size = inst.settings.get("__size_hint__")
+                    .and_then(|v| v.as_str()).map(WidgetSize::from_str)
+                    .unwrap_or(inst.size);
+
+                // on_remove
+                let cfg_r = cfg.clone();
+                let this_r = this_rebuild.clone();
+                let on_remove: widgets::OnRemove = Rc::new(move |id: String| {
+                    cfg_r.borrow_mut().widgets.retain(|w| w.id != id);
+                    let _ = widgets::config::save(&cfg_r.borrow());
+                    this_r();
+                });
+
+                // on_move
+                let cfg_m = cfg.clone();
+                let this_m = this_rebuild.clone();
+                let on_move: widgets::OnMove = Rc::new(move |id: String, dir: i32| {
+                    let mut cfg = cfg_m.borrow_mut();
+                    if let Some(i) = cfg.widgets.iter().position(|w| w.id == id) {
+                        let new_i = (i as i32 + dir).max(0) as usize;
+                        if new_i < cfg.widgets.len() && new_i != i {
+                            cfg.widgets.swap(i, new_i);
+                            for (j, w) in cfg.widgets.iter_mut().enumerate() {
+                                w.order = j as u32;
+                            }
+                            let _ = widgets::config::save(&cfg);
+                        }
                     }
-                }
+                    drop(cfg);
+                    this_m();
+                });
+
+                // apply
+                let cfg_a = cfg.clone();
+                let this_a = this_rebuild.clone();
+                let apply: widgets::ApplySettings = Rc::new(move |id: String, json: serde_json::Value| {
+                    let new_size = json.get("__size_hint__")
+                        .and_then(|v| v.as_str()).map(WidgetSize::from_str);
+                    let mut clean = json.clone();
+                    if let Some(obj) = clean.as_object_mut() {
+                        obj.remove("__size_hint__");
+                    }
+                    let mut cfg = cfg_a.borrow_mut();
+                    if let Some(w) = cfg.widgets.iter_mut().find(|w| w.id == id) {
+                        w.settings = clean;
+                        if let Some(sz) = new_size { w.size = sz; }
+                    }
+                    let _ = widgets::config::save(&cfg);
+                    drop(cfg);
+                    this_a();
+                });
+
+                let wrapped = widgets::frame::wrap(
+                    inst, content, edit.get(),
+                    on_remove, on_move, apply,
+                );
+                widgets::frame::apply_size(&wrapped, size);
+
+                let span = size.columns();
+                grid.attach(&wrapped, col, row, span, 1);
+                col += span;
+                if col >= 2 { col = 0; row += 1; }
             }
-        }
-    }
-    out.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-    out
-}
 
-fn battery_color(pct: u32) -> &'static str {
-    if pct < 20 { "error" } else if pct < 40 { "warning" } else { "success" }
-}
+            vbox.append(&grid);
+            root.append(&vbox);
 
-fn temp_color(c: f64) -> &'static str {
-    if c > 80.0 { "error" } else if c > 60.0 { "warning" } else { "success" }
-}
-
-fn add_battery_card(page: &adw::PreferencesPage) {
-    let group = adw::PreferencesGroup::builder().title("Battery").build();
-    let row = adw::ActionRow::builder().title("Charge").subtitle("…").build();
-    let pct_lbl = gtk::Label::new(Some("—"));
-    pct_lbl.add_css_class("title-1");
-    pct_lbl.set_valign(gtk::Align::Center);
-    row.add_suffix(&pct_lbl);
-    group.add(&row);
-
-    let bar_row = adw::ActionRow::builder().title("").build();
-    let bar = gtk::LevelBar::new();
-    bar.set_min_value(0.0);
-    bar.set_max_value(100.0);
-    bar.set_hexpand(true);
-    bar.set_valign(gtk::Align::Center);
-    bar.set_size_request(-1, 8);
-    bar_row.add_suffix(&bar);
-    bar_row.set_activatable(false);
-    group.add(&bar_row);
-
-    page.add(&group);
-
-    let row_c = row.clone(); let pct_c = pct_lbl.clone(); let bar_c = bar.clone();
-    glib::timeout_add_seconds_local(2, move || {
-        let pct = get_battery_capacity().unwrap_or(0);
-        let st = get_battery_status().unwrap_or_default();
-        row_c.set_subtitle(&st);
-        pct_c.set_text(&format!("{}%", pct));
-        bar_c.set_value(pct as f64);
-        let cls = battery_color(pct);
-        for c in ["success", "warning", "error"] { pct_c.remove_css_class(c); }
-        pct_c.add_css_class(cls);
-        glib::ControlFlow::Continue
-    });
-}
-
-fn add_thermal_card(page: &adw::PreferencesPage) {
-    let group = adw::PreferencesGroup::builder().title("Thermal").build();
-    let rows: Vec<(adw::ActionRow, gtk::LevelBar, gtk::Label)> = (0..6).map(|_| {
-        let row = adw::ActionRow::builder().title("—").build();
-        let bar = gtk::LevelBar::new();
-        bar.set_min_value(0.0);
-        bar.set_max_value(100.0);
-        bar.set_hexpand(true);
-        bar.set_valign(gtk::Align::Center);
-        bar.set_size_request(200, 8);
-        let lbl = gtk::Label::new(Some("—"));
-        lbl.set_valign(gtk::Align::Center);
-        lbl.add_css_class("dim-label");
-        row.add_suffix(&bar);
-        row.add_suffix(&lbl);
-        group.add(&row);
-        (row, bar, lbl)
-    }).collect();
-    page.add(&group);
-
-    let rows_c: Vec<_> = rows.into_iter().map(|(r, b, l)| (r, b, l)).collect();
-    glib::timeout_add_seconds_local(2, move || {
-        if let Some(h) = find_fan_hwmon() {
-            let temps = scan_temps(&h);
-            let mut sorted = temps.clone();
-            sorted.sort_by(|a, b| b.celsius.partial_cmp(&a.celsius).unwrap_or(std::cmp::Ordering::Equal));
-            for (i, (row, bar, lbl)) in rows_c.iter().enumerate() {
-                if let Some(t) = sorted.get(i) {
-                    row.set_title(&t.name);
-                    row.set_visible(true);
-                    bar.set_value(t.celsius.min(100.0));
-                    lbl.set_text(&format!("{:.1} °C", t.celsius));
-                    let cls = temp_color(t.celsius);
-                    for c in ["success", "warning", "error"] { bar.remove_css_class(c); }
-                    bar.add_css_class(cls);
-                } else {
-                    row.set_visible(false);
-                }
+            // Wire header buttons (using this_rebuild clone)
+            {
+                let edit = edit.clone();
+                let this = this_rebuild.clone();
+                edit_btn.connect_clicked(move |_| {
+                    edit.set(!edit.get());
+                    this();
+                });
             }
-        }
-        glib::ControlFlow::Continue
-    });
-}
-
-fn add_fans_card(page: &adw::PreferencesPage) {
-    let group = adw::PreferencesGroup::builder().title("Fans").build();
-    let rows: Vec<(adw::ActionRow, gtk::LevelBar, gtk::Label)> = (0..4).map(|_| {
-        let row = adw::ActionRow::builder().title("—").build();
-        let bar = gtk::LevelBar::new();
-        bar.set_min_value(0.0);
-        bar.set_max_value(1.0);
-        bar.set_hexpand(true);
-        bar.set_valign(gtk::Align::Center);
-        bar.set_size_request(200, 8);
-        let lbl = gtk::Label::new(Some("—"));
-        lbl.set_valign(gtk::Align::Center);
-        lbl.add_css_class("dim-label");
-        row.add_suffix(&bar);
-        row.add_suffix(&lbl);
-        group.add(&row);
-        (row, bar, lbl)
-    }).collect();
-    page.add(&group);
-
-    glib::timeout_add_seconds_local(2, move || {
-        if let Some(h) = find_fan_hwmon() {
-            let fans = scan_fans(&h);
-            for (i, (row, bar, lbl)) in rows.iter().enumerate() {
-                if let Some(f) = fans.get(i) {
-                    row.set_title(&format!("Fan {}", f.index));
-                    row.set_visible(true);
-                    let max = f.max.unwrap_or(6500) as f64;
-                    bar.set_value((f.rpm as f64 / max).clamp(0.0, 1.0));
-                    lbl.set_text(&format!("{} rpm", f.rpm));
-                } else {
-                    row.set_visible(false);
-                }
+            {
+                let cfg = cfg.clone();
+                let this = this_rebuild.clone();
+                add_btn.connect_clicked(move |btn| {
+                    let Some(parent) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok()) else {
+                        return;
+                    };
+                    let existing: Vec<String> = cfg.borrow().widgets.iter().map(|w| w.widget_type.clone()).collect();
+                    let cfg2 = cfg.clone();
+                    let this2 = this.clone();
+                    widgets::picker::open(&parent, existing, Rc::new(move |wt: &'static str| {
+                        let mut c = cfg2.borrow_mut();
+                        let order = c.widgets.len() as u32;
+                        c.widgets.push(widgets::new_instance(wt, order));
+                        let _ = widgets::config::save(&c);
+                        drop(c);
+                        this2();
+                    }));
+                });
             }
-        }
-        glib::ControlFlow::Continue
-    });
-}
-
-fn add_memory_card(page: &adw::PreferencesPage) {
-    let group = adw::PreferencesGroup::builder().title("Memory").build();
-    let row = adw::ActionRow::builder().title("RAM").subtitle("…").build();
-    let bar = gtk::LevelBar::new();
-    bar.set_min_value(0.0);
-    bar.set_max_value(1.0);
-    bar.set_hexpand(true);
-    bar.set_valign(gtk::Align::Center);
-    bar.set_size_request(200, 8);
-    row.add_suffix(&bar);
-    group.add(&row);
-    page.add(&group);
-
-    glib::timeout_add_seconds_local(3, move || {
-        let (used, total) = read_mem();
-        row.set_subtitle(&format!("{:.1} / {:.1} GiB", used, total));
-        bar.set_value(if total > 0.0 { used / total } else { 0.0 });
-        glib::ControlFlow::Continue
-    });
-}
-
-fn add_power_card(page: &adw::PreferencesPage) {
-    let group = adw::PreferencesGroup::builder().title("Power draw").build();
-    let total_row = adw::ActionRow::builder().title("Total").subtitle("…").build();
-    group.add(&total_row);
-    let rail_rows: Vec<adw::ActionRow> = (0..4).map(|_| {
-        adw::ActionRow::builder().title("—").subtitle("—").visible(false).build()
-    }).collect();
-    for r in &rail_rows { group.add(r); }
-    page.add(&group);
-
-    glib::timeout_add_seconds_local(1, move || {
-        let rails = read_power_rails();
-        let total: f64 = rails.iter().map(|(_, v)| v).sum();
-        total_row.set_subtitle(&format!("{:.2} W", total));
-        for (i, r) in rail_rows.iter().enumerate() {
-            if let Some((n, v)) = rails.get(i) {
-                r.set_title(n);
-                r.set_subtitle(&format!("{:.2} W", v));
-                r.set_visible(true);
-            } else {
-                r.set_visible(false);
+            {
+                let this = this_rebuild.clone();
+                reset_btn.connect_clicked(move |btn| {
+                    let Some(parent) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok()) else {
+                        return;
+                    };
+                    let dlg = gtk::MessageDialog::builder()
+                        .transient_for(&parent)
+                        .modal(true)
+                        .text("Reset dashboard to defaults?")
+                        .secondary_text("Your custom widget layout will be replaced.")
+                        .build();
+                    dlg.add_button("Cancel", gtk::ResponseType::Cancel);
+                    dlg.add_button("Reset", gtk::ResponseType::Accept);
+                    let this = this.clone();
+                    dlg.connect_response(move |d, resp| {
+                        if resp == gtk::ResponseType::Accept {
+                            let _ = widgets::config::reset();
+                            this();
+                        }
+                        d.close();
+                    });
+                    dlg.present();
+                });
             }
-        }
-        glib::ControlFlow::Continue
+        })
+    };
+
+    // Store self-reference before first call
+    *holder.borrow_mut() = Some(rebuild.clone());
+
+    // Defer initial rebuild to idle so root() resolves the real parent window
+    let rebuild_initial = rebuild.clone();
+    glib::idle_add_local_once(move || {
+        rebuild_initial();
     });
-}
 
-fn add_actions_card(page: &adw::PreferencesPage) {
-    let group = adw::PreferencesGroup::builder().title("Quick actions").build();
-    for (label, cmd) in [
-        ("Override charge to 100% for 2h", "charge"),
-        ("Cancel charge override", "cancel"),
-        ("Open kernel manager", "kernel"),
-        ("Generate diagnostic bundle", "diag"),
-        ("Open trackpad visualizer", "viz"),
-    ] {
-        let btn = gtk::Button::with_label(label);
-        btn.set_margin_top(4);
-        btn.set_margin_bottom(4);
-        match cmd {
-            "charge" => { btn.connect_clicked(move |_| { let _ = asahi_core::charge::override_for(100, 7200); }); }
-            "cancel" => { btn.connect_clicked(move |_| { let _ = asahi_core::charge::cancel_override(); }); }
-            "kernel" | "diag" | "viz" => {
-                let bin = match cmd { "kernel" => "asahi-kernel-manager", "diag" => "asahi-diag", _ => "asahi-trackpad-viz" };
-                let bin_s = bin.to_string();
-                btn.connect_clicked(move |_| { let _ = crate::helper::spawn_in_terminal(&bin_s); });
-            }
-            _ => {}
-        }
-        group.add(&btn);
-    }
-    page.add(&group);
-}
-
-pub fn build() -> adw::PreferencesPage {
-    let page = adw::PreferencesPage::new();
-    let cfg = load_widget_config();
-
-    if widget_enabled("battery", &cfg) { add_battery_card(&page); }
-    if widget_enabled("thermal", &cfg) { add_thermal_card(&page); }
-    if widget_enabled("fans", &cfg) { add_fans_card(&page); }
-    if widget_enabled("memory", &cfg) { add_memory_card(&page); }
-    if widget_enabled("power", &cfg) { add_power_card(&page); }
-    if widget_enabled("actions", &cfg) { add_actions_card(&page); }
-
-    page
+    sw.upcast()
 }

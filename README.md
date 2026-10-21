@@ -1,5 +1,10 @@
 # asahi-tools
 
+> **⚠️ ALPHA STATUS (v0.4.0-alpha.1)**
+>
+> This is an **unstable alpha release**. The widget system, GTK UI, and calibration tools are functional but may contain bugs. Tested on Fedora Asahi Remix (M1 Pro). Expect rough edges. Report issues on GitHub.
+
+
 [![CI](https://github.com/Mandrusian/asahi-tools/actions/workflows/ci.yml/badge.svg)](https://github.com/Mandrusian/asahi-tools/actions/workflows/ci.yml)
 [![Release](https://github.com/Mandrusian/asahi-tools/actions/workflows/release.yml/badge.svg)](https://github.com/Mandrusian/asahi-tools/actions/workflows/release.yml)
 ![platform](https://img.shields.io/badge/platform-Asahi%20Linux-blue)
