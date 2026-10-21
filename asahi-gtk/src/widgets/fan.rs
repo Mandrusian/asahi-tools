@@ -1,15 +1,17 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
+use gtk::glib;
 use gtk::prelude::*;
 use libadwaita as adw;
-use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use gtk::glib;
-use super::{WidgetInstance, WidgetSize};
+use std::sync::{Arc, Mutex};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
     let graph_h = if small { 50 } else { 100 };
 
@@ -19,12 +21,26 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
         group.add(&gtk::Label::new(Some("Unavailable: no fan devices")));
         return group.upcast();
     }
-    let fan_idx = inst.settings.get("fan_index").and_then(|v| v.as_u64()).unwrap_or(1).max(1) as usize - 1;
+    let fan_idx = inst
+        .settings
+        .get("fan_index")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(1)
+        .max(1) as usize
+        - 1;
     let Some((name, rpm, min, max)) = fans.get(fan_idx).cloned() else {
-        group.add(&gtk::Label::new(Some(&format!("Unavailable: fan {} not found", fan_idx + 1))));
+        group.add(&gtk::Label::new(Some(&format!(
+            "Unavailable: fan {} not found",
+            fan_idx + 1
+        ))));
         return group.upcast();
     };
-    let style = inst.settings.get("style").and_then(|v| v.as_str()).unwrap_or("gauge").to_string();
+    let style = inst
+        .settings
+        .get("style")
+        .and_then(|v| v.as_str())
+        .unwrap_or("gauge")
+        .to_string();
 
     let label: Option<gtk::Label> = if small {
         None
@@ -63,7 +79,9 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let n = name.clone();
     let da_weak = da.downgrade();
     glib::timeout_add_seconds_local(2, move || {
-        let Some(_da) = da_weak.upgrade() else { return glib::ControlFlow::Break };
+        let Some(_da) = da_weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
         if let Some((_, rpm, _, _)) = crate::helper::get_hwmon_fans().get(idx).cloned() {
             let mut h = hist_tick.lock().unwrap();
             h.push_back(rpm as f64);

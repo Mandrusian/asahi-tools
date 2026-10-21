@@ -113,7 +113,10 @@ fn read_local() -> Snapshot {
         }
     }
     if uboot.is_empty() {
-        uboot = run("m1n1-version", &[]).unwrap_or_default().trim().to_string();
+        uboot = run("m1n1-version", &[])
+            .unwrap_or_default()
+            .trim()
+            .to_string();
     }
     s.m1n1_status = if uboot.is_empty() {
         "unknown".into()
@@ -153,7 +156,10 @@ fn check_updates(snap: &mut Snapshot) -> String {
             if snap.available_updates.is_empty() {
                 "check complete — up to date".to_string()
             } else {
-                format!("check complete — {} update(s)", snap.available_updates.len())
+                format!(
+                    "check complete — {} update(s)",
+                    snap.available_updates.len()
+                )
             }
         }
         Err(e) => format!("check failed: {e}"),
@@ -175,9 +181,13 @@ fn fmt_uptime(secs: u64) -> String {
     let d = secs / 86400;
     let h = (secs % 86400) / 3600;
     let m = (secs % 3600) / 60;
-    if d > 0 { format!("{d}d {h}h") }
-    else if h > 0 { format!("{h}h {m}m") }
-    else { format!("{m}m") }
+    if d > 0 {
+        format!("{d}d {h}h")
+    } else if h > 0 {
+        format!("{h}h {m}m")
+    } else {
+        format!("{m}m")
+    }
 }
 
 fn main() -> io::Result<()> {
@@ -217,7 +227,12 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
             let header = vec![
                 Line::from(vec![
                     Span::styled("Current kernel  ", Style::default().fg(Color::DarkGray)),
-                    Span::styled(&snap.current_kernel, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        &snap.current_kernel,
+                        Style::default()
+                            .fg(Color::Cyan)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                 ]),
                 Line::from(vec![
                     Span::styled("Uptime          ", Style::default().fg(Color::DarkGray)),
@@ -233,7 +248,8 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
                 ]),
             ];
             f.render_widget(
-                Paragraph::new(header).block(Block::default().borders(Borders::ALL).title(" System ")),
+                Paragraph::new(header)
+                    .block(Block::default().borders(Borders::ALL).title(" System ")),
                 chunks[0],
             );
 
@@ -245,7 +261,10 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
 
             let mut installed: Vec<Line> = Vec::new();
             if snap.installed_kernels.is_empty() {
-                installed.push(Line::from(Span::styled("(none found)", Style::default().fg(Color::DarkGray))));
+                installed.push(Line::from(Span::styled(
+                    "(none found)",
+                    Style::default().fg(Color::DarkGray),
+                )));
             } else {
                 for p in &snap.installed_kernels {
                     installed.push(Line::from(vec![
@@ -256,11 +275,9 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
                 }
             }
             f.render_widget(
-                Paragraph::new(installed)
-                    .block(Block::default().borders(Borders::ALL).title(format!(
-                        " Installed kernels ({}) ",
-                        snap.installed_kernels.len()
-                    ))),
+                Paragraph::new(installed).block(Block::default().borders(Borders::ALL).title(
+                    format!(" Installed kernels ({}) ", snap.installed_kernels.len()),
+                )),
                 cols[0],
             );
 
@@ -271,11 +288,16 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
                     Style::default().fg(Color::DarkGray),
                 )));
             } else if snap.available_updates.is_empty() {
-                updates.push(Line::from(Span::styled("✓ up to date", Style::default().fg(Color::Green))));
+                updates.push(Line::from(Span::styled(
+                    "✓ up to date",
+                    Style::default().fg(Color::Green),
+                )));
             } else {
                 updates.push(Line::from(Span::styled(
                     format!("{} update(s) available", snap.available_updates.len()),
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
                 )));
                 updates.push(Line::from(""));
                 for p in &snap.available_updates {
@@ -295,35 +317,64 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
             // Actions
             let actions = vec![
                 Line::from(vec![
-                    Span::styled("c", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "c",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw("  check for updates"),
                 ]),
                 Line::from(vec![
-                    Span::styled("u", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "u",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw("  upgrade kernel-asahi* (dnf upgrade + update-m1n1)"),
                 ]),
                 Line::from(vec![
-                    Span::styled("r", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "r",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw("  run update-m1n1 (refresh bootloader)"),
                 ]),
                 Line::from(vec![
-                    Span::styled("f", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "f",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw("  run asahi-fwupdate (firmware)"),
                 ]),
                 Line::from(vec![
-                    Span::styled("l", Style::default().fg(Color::Green).add_modifier(Modifier::BOLD)),
+                    Span::styled(
+                        "l",
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
+                    ),
                     Span::raw("  show system journal errors from last boot"),
                 ]),
                 Line::from(""),
                 if let Some(c) = confirm {
                     Line::from(Span::styled(
                         format!("⚠ press ENTER to confirm `{c}`, ESC to cancel"),
-                        Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
                     ))
                 } else {
                     Line::from(Span::styled(
                         "q  quit",
-                        Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                        Style::default()
+                            .fg(Color::Green)
+                            .add_modifier(Modifier::BOLD),
                     ))
                 },
             ];
@@ -336,8 +387,11 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
 
             // Status
             f.render_widget(
-                Paragraph::new(Span::styled(status.as_str(), Style::default().fg(status_color)))
-                    .block(Block::default().borders(Borders::ALL).title(" Status ")),
+                Paragraph::new(Span::styled(
+                    status.as_str(),
+                    Style::default().fg(status_color),
+                ))
+                .block(Block::default().borders(Borders::ALL).title(" Status ")),
                 chunks[3],
             );
         })?;
@@ -417,14 +471,14 @@ fn execute_action(
     action: &str,
 ) -> io::Result<(String, Color)> {
     let (success, summary) = match action {
-        "upgrade" => run_interactive(
-            terminal,
-            "sudo",
-            &["dnf", "upgrade", "-y", "kernel-asahi*"],
-        )?,
+        "upgrade" => run_interactive(terminal, "sudo", &["dnf", "upgrade", "-y", "kernel-asahi*"])?,
         "update-m1n1" => run_interactive(terminal, "sudo", &["update-m1n1"])?,
         "fwupdate" => run_interactive(terminal, "sudo", &["asahi-fwupdate"])?,
-        "journal" => run_interactive(terminal, "journalctl", &["-p", "err", "-b", "-n", "100", "--no-pager"])?,
+        "journal" => run_interactive(
+            terminal,
+            "journalctl",
+            &["-p", "err", "-b", "-n", "100", "--no-pager"],
+        )?,
         _ => (false, "unknown action".into()),
     };
 

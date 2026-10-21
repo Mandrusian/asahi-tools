@@ -1,6 +1,6 @@
+use super::{find_def, ApplySettings, OnMove, OnRemove, WidgetInstance, WidgetSize};
 use gtk::prelude::*;
 use std::rc::Rc;
-use super::{WidgetInstance, WidgetSize, ApplySettings, OnRemove, OnMove, find_def};
 
 pub fn wrap(
     instance: &WidgetInstance,
@@ -28,7 +28,10 @@ pub fn wrap(
     down_btn.set_tooltip_text(Some("Move down"));
 
     let def = find_def(&instance.widget_type);
-    let name = def.map(|d| d.name).unwrap_or(&instance.widget_type).to_string();
+    let name = def
+        .map(|d| d.name)
+        .unwrap_or(&instance.widget_type)
+        .to_string();
     let title = gtk::Label::new(Some(&name));
     title.set_xalign(0.0);
     title.set_hexpand(true);
@@ -84,7 +87,8 @@ pub fn wrap(
                 &inst,
                 schema,
                 Rc::new(move |mut json| {
-                    let size = json.as_object_mut()
+                    let size = json
+                        .as_object_mut()
                         .and_then(|m| m.remove("__size__"))
                         .and_then(|v| v.as_str().map(|s| s.to_string()));
                     if let Some(sz) = size {

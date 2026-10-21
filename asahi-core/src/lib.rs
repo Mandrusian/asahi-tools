@@ -178,8 +178,8 @@ fn read_u32(path: &str) -> Result<u32, AsahiError> {
 }
 
 pub mod charge;
-pub mod sysmon;
 pub mod history;
+pub mod sysmon;
 
 pub mod notify_config;
 

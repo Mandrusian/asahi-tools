@@ -16,18 +16,24 @@ struct TouchPoint {
 
 #[derive(Clone, Debug)]
 struct Ranges {
-    min_x: f32, max_x: f32,
-    min_y: f32, max_y: f32,
-    min_p: f32, max_p: f32,
+    min_x: f32,
+    max_x: f32,
+    min_y: f32,
+    max_y: f32,
+    min_p: f32,
+    max_p: f32,
     source: &'static str,
 }
 
 impl Default for Ranges {
     fn default() -> Self {
         Self {
-            min_x: -2909.0, max_x: 3167.0,
-            min_y: -2456.0, max_y: 2565.0,
-            min_p: 0.0,    max_p: 253.0,
+            min_x: -2909.0,
+            max_x: 3167.0,
+            min_y: -2456.0,
+            max_y: 2565.0,
+            min_p: 0.0,
+            max_p: 253.0,
             source: "apple-defaults",
         }
     }
@@ -83,7 +89,9 @@ fn read_abs_ranges(dev: &Device) -> Ranges {
         r.min_p = abs[ip].minimum as f32;
         r.max_p = abs[ip].maximum as f32;
     }
-    if ok { r.source = "absinfo"; }
+    if ok {
+        r.source = "absinfo";
+    }
     r
 }
 
@@ -95,7 +103,9 @@ fn read_events(state: Arc<Mutex<TrackpadState>>) {
             return;
         }
     };
-    if let Some(n) = dev.name() { eprintln!("viz: opened {n}"); }
+    if let Some(n) = dev.name() {
+        eprintln!("viz: opened {n}");
+    }
 
     let r = read_abs_ranges(&dev);
     eprintln!(
@@ -104,13 +114,21 @@ fn read_events(state: Arc<Mutex<TrackpadState>>) {
     );
     state.lock().unwrap().ranges = r.clone();
 
-    let mut slots: Vec<TouchPoint> = (0..16).map(|i| TouchPoint { id: -(i+1) as i32, ..Default::default() }).collect();
+    let mut slots: Vec<TouchPoint> = (0..16)
+        .map(|i| TouchPoint {
+            id: -(i + 1) as i32,
+            ..Default::default()
+        })
+        .collect();
     let mut cur = 0usize;
 
     loop {
         let events = match dev.fetch_events() {
             Ok(e) => e,
-            Err(e) => { eprintln!("viz: read error {e}"); break; }
+            Err(e) => {
+                eprintln!("viz: read error {e}");
+                break;
+            }
         };
         let mut dirty = false;
         for ev in events {
@@ -118,21 +136,39 @@ fn read_events(state: Arc<Mutex<TrackpadState>>) {
                 match axis {
                     AbsoluteAxisType::ABS_MT_SLOT => {
                         cur = ev.value().max(0) as usize;
-                        while cur >= slots.len() { slots.push(TouchPoint::default()); }
+                        while cur >= slots.len() {
+                            slots.push(TouchPoint::default());
+                        }
                     }
-                    AbsoluteAxisType::ABS_MT_POSITION_X => { slots[cur].x = ev.value() as f32; dirty = true; }
-                    AbsoluteAxisType::ABS_MT_POSITION_Y => { slots[cur].y = ev.value() as f32; dirty = true; }
+                    AbsoluteAxisType::ABS_MT_POSITION_X => {
+                        slots[cur].x = ev.value() as f32;
+                        dirty = true;
+                    }
+                    AbsoluteAxisType::ABS_MT_POSITION_Y => {
+                        slots[cur].y = ev.value() as f32;
+                        dirty = true;
+                    }
                     AbsoluteAxisType::ABS_MT_PRESSURE | AbsoluteAxisType::ABS_PRESSURE => {
                         // Prefer ABS_MT_PRESSURE, but fall back to ABS_PRESSURE if higher
                         let v = ev.value() as f32;
-                        if v > slots[cur].pressure { slots[cur].pressure = v; }
+                        if v > slots[cur].pressure {
+                            slots[cur].pressure = v;
+                        }
                         dirty = true;
                     }
-                    AbsoluteAxisType::ABS_MT_TOUCH_MAJOR => { slots[cur].size = ev.value() as f32; dirty = true; }
+                    AbsoluteAxisType::ABS_MT_TOUCH_MAJOR => {
+                        slots[cur].size = ev.value() as f32;
+                        dirty = true;
+                    }
                     AbsoluteAxisType::ABS_MT_TRACKING_ID => {
                         let id = ev.value();
                         slots[cur].id = id;
-                        if id < 0 { slots[cur] = TouchPoint { id: -1, ..Default::default() }; }
+                        if id < 0 {
+                            slots[cur] = TouchPoint {
+                                id: -1,
+                                ..Default::default()
+                            };
+                        }
                         dirty = true;
                     }
                     _ => {}
@@ -141,9 +177,11 @@ fn read_events(state: Arc<Mutex<TrackpadState>>) {
         }
         if dirty {
             let mut s = state.lock().unwrap();
-            s.points = slots.iter()
+            s.points = slots
+                .iter()
                 .filter(|p| p.id >= 0 && p.pressure > 0.0)
-                .cloned().collect();
+                .cloned()
+                .collect();
         }
         thread::sleep(Duration::from_millis(6));
     }
@@ -151,7 +189,9 @@ fn read_events(state: Arc<Mutex<TrackpadState>>) {
 
 fn norm(v: f32, min: f32, max: f32) -> f32 {
     let span = max - min;
-    if span.abs() < 1.0 { return 0.5; }
+    if span.abs() < 1.0 {
+        return 0.5;
+    }
     ((v - min) / span).clamp(0.0, 1.0)
 }
 
@@ -173,10 +213,14 @@ impl eframe::App for VizApp {
                 egui::Align2::LEFT_TOP,
                 format!(
                     "points:{}  [{}]  x[{:.0},{:.0}] y[{:.0},{:.0}] p[{:.0},{:.0}]  flip_y={}",
-                    s.points.len(), s.ranges.source,
-                    s.ranges.min_x, s.ranges.max_x,
-                    s.ranges.min_y, s.ranges.max_y,
-                    s.ranges.min_p, s.ranges.max_p,
+                    s.points.len(),
+                    s.ranges.source,
+                    s.ranges.min_x,
+                    s.ranges.max_x,
+                    s.ranges.min_y,
+                    s.ranges.max_y,
+                    s.ranges.min_p,
+                    s.ranges.max_p,
                     self.flip_y
                 ),
                 egui::FontId::monospace(10.0),
@@ -184,7 +228,11 @@ impl eframe::App for VizApp {
             );
 
             // Draw trackpad bounds as faint outline
-            painter.rect_stroke(rect.shrink(20.0), 4.0, egui::Stroke::new(1.0_f32, egui::Color32::from_gray(50)));
+            painter.rect_stroke(
+                rect.shrink(20.0),
+                4.0,
+                egui::Stroke::new(1.0_f32, egui::Color32::from_gray(50)),
+            );
 
             for p in &s.points {
                 let nx = norm(p.x, s.ranges.min_x, s.ranges.max_x);
@@ -203,7 +251,11 @@ impl eframe::App for VizApp {
                     (120.0 * (1.0 - press)) as u8,
                 );
                 painter.circle_filled(egui::pos2(cx, cy), radius, color);
-                painter.circle_stroke(egui::pos2(cx, cy), radius + 2.0, egui::Stroke::new(1.0_f32, egui::Color32::WHITE));
+                painter.circle_stroke(
+                    egui::pos2(cx, cy),
+                    radius + 2.0,
+                    egui::Stroke::new(1.0_f32, egui::Color32::WHITE),
+                );
                 painter.text(
                     egui::pos2(cx + radius + 4.0, cy),
                     egui::Align2::LEFT_CENTER,

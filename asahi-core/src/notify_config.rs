@@ -7,9 +7,15 @@ pub struct Toggle {
 }
 
 impl Toggle {
-    pub fn on() -> Self { Self { enabled: true } }
-    pub fn off() -> Self { Self { enabled: false } }
-    pub fn flip(&mut self) { self.enabled = !self.enabled; }
+    pub fn on() -> Self {
+        Self { enabled: true }
+    }
+    pub fn off() -> Self {
+        Self { enabled: false }
+    }
+    pub fn flip(&mut self) {
+        self.enabled = !self.enabled;
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone, Copy, Debug)]
@@ -19,7 +25,12 @@ pub struct Threshold {
 }
 
 impl Threshold {
-    pub fn new(t: f64) -> Self { Self { enabled: true, threshold: t } }
+    pub fn new(t: f64) -> Self {
+        Self {
+            enabled: true,
+            threshold: t,
+        }
+    }
     pub fn bump(&mut self, delta: f64, min: f64, max: f64) {
         self.threshold = (self.threshold + delta).clamp(min, max);
     }

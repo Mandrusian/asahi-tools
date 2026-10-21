@@ -81,15 +81,23 @@ fn run_daemon() {
     let mut last_mtime = config_mtime();
 
     if !cfg.is_calibrated() {
-        eprintln!("force-click: config is not calibrated; run `asahi-force-click --calibrate` first");
-        eprintln!("force-click: using tentative defaults (hard={}, release={})", cfg.hard_press, cfg.release);
+        eprintln!(
+            "force-click: config is not calibrated; run `asahi-force-click --calibrate` first"
+        );
+        eprintln!(
+            "force-click: using tentative defaults (hard={}, release={})",
+            cfg.hard_press, cfg.release
+        );
     } else {
         eprintln!(
             "force-click: calibrated  hard_press={}  release={}",
             cfg.hard_press, cfg.release
         );
     }
-    eprintln!("force-click: watching {} for changes", asahi_core::trackpad_config::config_path().display());
+    eprintln!(
+        "force-click: watching {} for changes",
+        asahi_core::trackpad_config::config_path().display()
+    );
 
     let mut virt = match build_virtual_mouse() {
         Ok(v) => v,
@@ -137,7 +145,10 @@ fn run_daemon() {
 
         if armed && cur >= cfg.hard_press {
             match emit_right_click(&mut virt) {
-                Ok(_) => eprintln!("force-click: RIGHT CLICK (p={cur}, threshold={})", cfg.hard_press),
+                Ok(_) => eprintln!(
+                    "force-click: RIGHT CLICK (p={cur}, threshold={})",
+                    cfg.hard_press
+                ),
                 Err(e) => eprintln!("emit failed: {e}"),
             }
             armed = false;
@@ -150,8 +161,8 @@ fn run_daemon() {
 
 // ── Calibration ─────────────────────────────────────────────
 
-const PRESS_START: i32 = 100;       // pressure above this = "touch started"
-const RELEASE_DETECT: i32 = 40;     // pressure below this = "lifted"
+const PRESS_START: i32 = 100; // pressure above this = "touch started"
+const RELEASE_DETECT: i32 = 40; // pressure below this = "lifted"
 const RELEASE_STABLE_MS: u128 = 150;
 const TAPS_PER_PHASE: usize = 3;
 const CYCLE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -200,12 +211,7 @@ fn wait_for_press_cycle(dev: &mut Device, timeout: Duration) -> Option<i32> {
     }
 }
 
-fn capture_phase(
-    dev: &mut Device,
-    label: &str,
-    instruction: &str,
-    n: usize,
-) -> Vec<i32> {
+fn capture_phase(dev: &mut Device, label: &str, instruction: &str, n: usize) -> Vec<i32> {
     println!();
     println!("── {} ──", label);
     println!("  {}", instruction);
@@ -300,7 +306,10 @@ fn run_calibration() {
             println!("  hard_press:   {}", hard_thresh);
             println!("  release:      {}", release_thresh);
             println!();
-            println!("Saved to {}", asahi_core::trackpad_config::config_path().display());
+            println!(
+                "Saved to {}",
+                asahi_core::trackpad_config::config_path().display()
+            );
             println!("The daemon will pick this up within 3 seconds.");
             println!();
             println!("Restart the daemon if it's not running, or wait for auto-reload.");
@@ -333,7 +342,10 @@ fn main() {
         println!("  --calibrate      interactive calibration, auto-saves to config");
         println!("  --help           this message");
         println!();
-        println!("Config: {}", asahi_core::trackpad_config::config_path().display());
+        println!(
+            "Config: {}",
+            asahi_core::trackpad_config::config_path().display()
+        );
     } else {
         run_daemon();
     }

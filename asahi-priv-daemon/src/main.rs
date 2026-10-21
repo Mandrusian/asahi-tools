@@ -24,7 +24,10 @@ const DISP_PATHS: &[&str] = &[
 ];
 
 fn find_disp() -> Option<&'static str> {
-    DISP_PATHS.iter().copied().find(|p| std::path::Path::new(p).exists())
+    DISP_PATHS
+        .iter()
+        .copied()
+        .find(|p| std::path::Path::new(p).exists())
 }
 
 fn disp_max_path() -> Option<String> {
@@ -32,8 +35,13 @@ fn disp_max_path() -> Option<String> {
 }
 
 const ALLOWED_MODULES: &[&str] = &[
-    "brcmfmac", "hci_bcm4377", "macsmc_hwmon",
-    "apple_dcp", "applespi", "hid_apple", "snd_soc_macaudio",
+    "brcmfmac",
+    "hci_bcm4377",
+    "macsmc_hwmon",
+    "apple_dcp",
+    "applespi",
+    "hid_apple",
+    "snd_soc_macaudio",
 ];
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -139,7 +147,8 @@ fn handle(req: Request) -> serde_json::Value {
             }
         }
         Request::GetProfile => {
-            let p = std::fs::read_to_string(PROFILE).ok()
+            let p = std::fs::read_to_string(PROFILE)
+                .ok()
                 .map(|s| s.trim().to_string())
                 .unwrap_or_else(|| "unknown".into());
             serde_json::json!({"ok": true, "profile": p})
@@ -199,13 +208,14 @@ fn handle(req: Request) -> serde_json::Value {
             if !ALLOWED_ACTIONS.contains(&action.as_str()) {
                 return serde_json::json!({"ok": false, "error": "action not whitelisted"});
             }
-            let status = Command::new("systemctl")
-                .arg(&action)
-                .arg(&name)
-                .status();
+            let status = Command::new("systemctl").arg(&action).arg(&name).status();
             match status {
-                Ok(s) if s.success() => serde_json::json!({"ok": true, "action": action, "name": name}),
-                Ok(s) => serde_json::json!({"ok": false, "error": format!("exit {}", s.code().unwrap_or(-1))}),
+                Ok(s) if s.success() => {
+                    serde_json::json!({"ok": true, "action": action, "name": name})
+                }
+                Ok(s) => {
+                    serde_json::json!({"ok": false, "error": format!("exit {}", s.code().unwrap_or(-1))})
+                }
                 Err(e) => serde_json::json!({"ok": false, "error": e.to_string()}),
             }
         }
@@ -230,16 +240,22 @@ fn handle(req: Request) -> serde_json::Value {
             ALS_ENABLED.store(enabled, Ordering::Relaxed);
             let mut cfg = load_als_config();
             cfg.enabled = enabled;
-            let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+            let home = std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_default();
             let path = home.join(".config/asahi-tools/als.json");
             let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
-            let _ = std::fs::write(&path, serde_json::to_string_pretty(&serde_json::json!({
-                "enabled": cfg.enabled,
-                "sensor_path": cfg.sensor_path,
-                "curve": cfg.curve,
-                "smoothing_ms": cfg.smoothing_ms,
-                "manual_override_secs": cfg.manual_override_secs,
-            })).unwrap_or_default());
+            let _ = std::fs::write(
+                &path,
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "enabled": cfg.enabled,
+                    "sensor_path": cfg.sensor_path,
+                    "curve": cfg.curve,
+                    "smoothing_ms": cfg.smoothing_ms,
+                    "manual_override_secs": cfg.manual_override_secs,
+                }))
+                .unwrap_or_default(),
+            );
             serde_json::json!({"ok": true, "enabled": enabled})
         }
         Request::AlsManualOverride => {
@@ -255,7 +271,10 @@ fn handle_client(stream: UnixStream) -> std::io::Result<()> {
     let mut writer = stream.try_clone()?;
     let reader = BufReader::new(stream);
     for line in reader.lines() {
-        let line = match line { Ok(l) => l, Err(_) => break };
+        let line = match line {
+            Ok(l) => l,
+            Err(_) => break,
+        };
         let req: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
@@ -296,7 +315,13 @@ impl Default for AlsConfig {
         Self {
             enabled: false,
             sensor_path: "/sys/bus/iio/devices/iio:device0/in_illuminance_input".into(),
-            curve: vec![(0.0, 10.0), (50.0, 30.0), (200.0, 55.0), (1000.0, 85.0), (5000.0, 100.0)],
+            curve: vec![
+                (0.0, 10.0),
+                (50.0, 30.0),
+                (200.0, 55.0),
+                (1000.0, 85.0),
+                (5000.0, 100.0),
+            ],
             smoothing_ms: 500,
             manual_override_secs: 300,
         }
@@ -304,7 +329,9 @@ impl Default for AlsConfig {
 }
 
 fn load_als_config() -> AlsConfig {
-    let home = std::env::var_os("HOME").map(std::path::PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_default();
     let p = home.join(".config/asahi-tools/als.json");
     match std::fs::read_to_string(&p) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
@@ -313,9 +340,15 @@ fn load_als_config() -> AlsConfig {
 }
 
 fn interpolate_curve(curve: &[(f64, f64)], lux: f64) -> f64 {
-    if curve.is_empty() { return 50.0; }
-    if lux <= curve[0].0 { return curve[0].1; }
-    if lux >= curve[curve.len() - 1].0 { return curve[curve.len() - 1].1; }
+    if curve.is_empty() {
+        return 50.0;
+    }
+    if lux <= curve[0].0 {
+        return curve[0].1;
+    }
+    if lux >= curve[curve.len() - 1].0 {
+        return curve[curve.len() - 1].1;
+    }
     for i in 1..curve.len() {
         if lux <= curve[i].0 {
             let (x0, y0) = curve[i - 1];
@@ -335,25 +368,38 @@ fn now_unix() -> i64 {
 }
 
 fn als_loop(cfg: AlsConfig) {
-    eprintln!("als: thread started (sensor={}, curve points={})", cfg.sensor_path, cfg.curve.len());
+    eprintln!(
+        "als: thread started (sensor={}, curve points={})",
+        cfg.sensor_path,
+        cfg.curve.len()
+    );
     ALS_ENABLED.store(cfg.enabled, Ordering::Relaxed);
     let mut last_brightness = -1.0f64;
     loop {
         std::thread::sleep(Duration::from_millis(cfg.smoothing_ms));
-        if !ALS_ENABLED.load(Ordering::Relaxed) { continue; }
+        if !ALS_ENABLED.load(Ordering::Relaxed) {
+            continue;
+        }
         // Check manual override window
         let now = now_unix();
         let until = ALS_OVERRIDE_UNTIL.load(Ordering::Relaxed);
-        if now < until { continue; }
+        if now < until {
+            continue;
+        }
         // Read lux
         let lux = match std::fs::read_to_string(&cfg.sensor_path) {
-            Ok(s) => match s.trim().parse::<f64>() { Ok(v) => v, Err(_) => continue },
+            Ok(s) => match s.trim().parse::<f64>() {
+                Ok(v) => v,
+                Err(_) => continue,
+            },
             Err(_) => continue,
         };
         // Compute target brightness (as percent of max)
         let target_pct = interpolate_curve(&cfg.curve, lux);
         // Smooth towards target
-        let target = if last_brightness < 0.0 { target_pct } else {
+        let target = if last_brightness < 0.0 {
+            target_pct
+        } else {
             last_brightness + (target_pct - last_brightness) * 0.25
         };
         last_brightness = target;
@@ -389,7 +435,9 @@ fn main() {
 
     for stream in listener.incoming() {
         if let Ok(s) = stream {
-            thread::spawn(move || { let _ = handle_client(s); });
+            thread::spawn(move || {
+                let _ = handle_client(s);
+            });
         }
     }
 }

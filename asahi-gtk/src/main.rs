@@ -1,12 +1,12 @@
 mod helper;
-mod widgets;
 mod pages;
+mod widgets;
 
-use gtk::gdk;
-use gtk::prelude::*;
-use gtk::glib;
-use libadwaita as adw;
 use adw::prelude::*;
+use gtk::gdk;
+use gtk::glib;
+use gtk::prelude::*;
+use libadwaita as adw;
 use std::cell::Cell;
 use std::rc::Rc;
 
@@ -21,7 +21,9 @@ fn load_theme() {
 }
 
 fn main() -> glib::ExitCode {
-    let app = adw::Application::builder().application_id("com.github.mandrusian.asahi-tools").build();
+    let app = adw::Application::builder()
+        .application_id("com.github.mandrusian.asahi-tools")
+        .build();
     app.connect_startup(|_| load_theme());
     app.connect_activate(build_ui);
     app.run()
@@ -29,7 +31,11 @@ fn main() -> glib::ExitCode {
 
 fn build_ui(app: &adw::Application) {
     let window = adw::ApplicationWindow::builder()
-        .application(app).title("Asahi Settings").default_width(1050).default_height(720).build();
+        .application(app)
+        .title("Asahi Settings")
+        .default_width(1050)
+        .default_height(720)
+        .build();
 
     let header = adw::HeaderBar::new();
     let title = adw::WindowTitle::new("Asahi Settings", "Dashboard");
@@ -82,9 +88,12 @@ fn build_ui(app: &adw::Application) {
 
         let row = gtk::ListBoxRow::new();
         let hbox = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        let img = gtk::Image::from_icon_name(icon); img.set_pixel_size(18);
-        let lbl = gtk::Label::new(Some(name)); lbl.set_xalign(0.0);
-        hbox.append(&img); hbox.append(&lbl);
+        let img = gtk::Image::from_icon_name(icon);
+        img.set_pixel_size(18);
+        let lbl = gtk::Label::new(Some(name));
+        lbl.set_xalign(0.0);
+        hbox.append(&img);
+        hbox.append(&lbl);
         row.set_child(Some(&hbox));
         sidebar_list.append(&row);
         rows.push(row);
@@ -92,8 +101,12 @@ fn build_ui(app: &adw::Application) {
     }
 
     let sidebar_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
-    sidebar_box.add_css_class("sidebar"); sidebar_box.set_width_request(240);
-    let sidebar_scroll = gtk::ScrolledWindow::builder().child(&sidebar_list).vexpand(true).build();
+    sidebar_box.add_css_class("sidebar");
+    sidebar_box.set_width_request(240);
+    let sidebar_scroll = gtk::ScrolledWindow::builder()
+        .child(&sidebar_list)
+        .vexpand(true)
+        .build();
     sidebar_box.append(&sidebar_scroll);
 
     let split_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
@@ -110,11 +123,15 @@ fn build_ui(app: &adw::Application) {
         menu_btn.connect_clicked(move |_| {
             if collapsed_state.get() {
                 sidebar.set_width_request(240);
-                for l in &labels { l.set_visible(true); }
+                for l in &labels {
+                    l.set_visible(true);
+                }
                 collapsed_state.set(false);
             } else {
                 sidebar.set_width_request(68);
-                for l in &labels { l.set_visible(false); }
+                for l in &labels {
+                    l.set_visible(false);
+                }
                 collapsed_state.set(true);
             }
         });
@@ -134,7 +151,10 @@ fn build_ui(app: &adw::Application) {
         let s_rows = rows.clone();
         let map = pages_map.clone();
         stack.connect_visible_child_name_notify(move |s| {
-            let current = s.visible_child_name().map(|g| g.to_string()).unwrap_or_default();
+            let current = s
+                .visible_child_name()
+                .map(|g| g.to_string())
+                .unwrap_or_default();
             if let Some(idx) = map.iter().position(|(id, _, _)| *id == current) {
                 title.set_subtitle(map[idx].1);
                 s_rows[idx].activate();

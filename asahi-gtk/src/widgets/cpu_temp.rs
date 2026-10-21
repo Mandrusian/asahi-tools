@@ -1,27 +1,36 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
+use gtk::glib;
 use gtk::prelude::*;
 use libadwaita as adw;
-use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use gtk::glib;
-use super::{WidgetInstance, WidgetSize};
+use std::sync::{Arc, Mutex};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
     let graph_h = if small { 40 } else { 100 };
 
-    let group = adw::PreferencesGroup::builder().title("CPU Temperature").build();
+    let group = adw::PreferencesGroup::builder()
+        .title("CPU Temperature")
+        .build();
     let sensors = crate::helper::get_hwmon_sensors();
     if sensors.is_empty() {
         group.add(&gtk::Label::new(Some("Unavailable: no hwmon sensors")));
         return group.upcast();
     }
 
-    let window = inst.settings.get("window").and_then(|v| v.as_u64()).unwrap_or(60) as usize;
-    let history: Arc<Mutex<VecDeque<f64>>> = Arc::new(Mutex::new(VecDeque::from(vec![0.0; window.min(120)])));
+    let window = inst
+        .settings
+        .get("window")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(60) as usize;
+    let history: Arc<Mutex<VecDeque<f64>>> =
+        Arc::new(Mutex::new(VecDeque::from(vec![0.0; window.min(120)])));
 
     let label: Option<gtk::Label> = if small {
         None
@@ -40,10 +49,16 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     da.set_draw_func(move |_, cr, w, h| {
         let data = hist_draw.lock().unwrap().clone();
         let (r, g, b) = if let Some(last) = data.back() {
-            if *last > 80.0 { (0.88, 0.11, 0.14) }
-            else if *last >= 60.0 { (0.96, 0.65, 0.15) }
-            else { (0.18, 0.76, 0.49) }
-        } else { (0.5, 0.5, 0.5) };
+            if *last > 80.0 {
+                (0.88, 0.11, 0.14)
+            } else if *last >= 60.0 {
+                (0.96, 0.65, 0.15)
+            } else {
+                (0.18, 0.76, 0.49)
+            }
+        } else {
+            (0.5, 0.5, 0.5)
+        };
         crate::helper::draw_graph(cr, w, h, &data, 20.0, 100.0, (r, g, b));
     });
     group.add(&da);
@@ -53,7 +68,9 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let target_h = graph_h;
     let _ = target_h;
     glib::timeout_add_seconds_local(2, move || {
-        if !da.is_mapped() { return glib::ControlFlow::Continue; }
+        if !da.is_mapped() {
+            return glib::ControlFlow::Continue;
+        }
         let sensors = crate::helper::get_hwmon_sensors();
         let hottest = sensors.iter().map(|(_, t)| *t).fold(0.0_f64, f64::max);
         if hottest > 0.0 {

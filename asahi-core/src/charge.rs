@@ -9,24 +9,41 @@ pub const SOCKET: &str = "/run/asahi-charge.sock";
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Request {
     Status,
-    Override { percent: u32, duration_secs: u64 },
+    Override {
+        percent: u32,
+        duration_secs: u64,
+    },
     CancelOverride,
-    SetTarget { target: u32, hysteresis: Option<u32> },
+    SetTarget {
+        target: u32,
+        hysteresis: Option<u32>,
+    },
 }
 
 #[derive(Deserialize, Clone, Debug, Default)]
 pub struct Status {
-    #[serde(default)] pub ok: bool,
-    #[serde(default)] pub capacity: Option<u32>,
-    #[serde(default)] pub temp_c: Option<f64>,
-    #[serde(default)] pub charging_enabled: bool,
-    #[serde(default)] pub override_active: bool,
-    #[serde(default)] pub override_remaining_secs: Option<u64>,
-    #[serde(default)] pub effective_target: u32,
-    #[serde(default)] pub config_target: u32,
-    #[serde(default)] pub hysteresis: u32,
-    #[serde(default)] pub max_temp_c: u32,
-    #[serde(default)] pub last_action: String,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub capacity: Option<u32>,
+    #[serde(default)]
+    pub temp_c: Option<f64>,
+    #[serde(default)]
+    pub charging_enabled: bool,
+    #[serde(default)]
+    pub override_active: bool,
+    #[serde(default)]
+    pub override_remaining_secs: Option<u64>,
+    #[serde(default)]
+    pub effective_target: u32,
+    #[serde(default)]
+    pub config_target: u32,
+    #[serde(default)]
+    pub hysteresis: u32,
+    #[serde(default)]
+    pub max_temp_c: u32,
+    #[serde(default)]
+    pub last_action: String,
 }
 
 pub fn query(req: &Request) -> std::io::Result<Status> {
@@ -36,8 +53,7 @@ pub fn query(req: &Request) -> std::io::Result<Status> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    serde_json::from_str(&line)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    serde_json::from_str(&line).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
 pub fn status() -> Option<Status> {
@@ -45,7 +61,10 @@ pub fn status() -> Option<Status> {
 }
 
 pub fn override_for(percent: u32, duration_secs: u64) -> std::io::Result<()> {
-    query(&Request::Override { percent, duration_secs })?;
+    query(&Request::Override {
+        percent,
+        duration_secs,
+    })?;
     Ok(())
 }
 

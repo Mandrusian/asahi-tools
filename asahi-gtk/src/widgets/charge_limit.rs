@@ -1,16 +1,24 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
-use super::{WidgetInstance, WidgetSize};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
-    let immediate = inst.settings.get("immediate").and_then(|v| v.as_bool()).unwrap_or(false);
+    let immediate = inst
+        .settings
+        .get("immediate")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
 
-    let group = adw::PreferencesGroup::builder().title("Charge Limit").build();
+    let group = adw::PreferencesGroup::builder()
+        .title("Charge Limit")
+        .build();
     let (start, end) = asahi_core::get_charge_thresholds().unwrap_or((70, 80));
 
     let end_row = adw::ActionRow::builder().title("Stop at").build();

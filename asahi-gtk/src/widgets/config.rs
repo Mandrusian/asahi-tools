@@ -1,4 +1,4 @@
-use super::{WidgetInstance, WidgetSize, default_layout};
+use super::{default_layout, WidgetInstance, WidgetSize};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -10,12 +10,17 @@ pub struct DashboardConfig {
 
 impl Default for DashboardConfig {
     fn default() -> Self {
-        Self { version: 1, widgets: default_layout() }
+        Self {
+            version: 1,
+            widgets: default_layout(),
+        }
     }
 }
 
 pub fn config_dir() -> PathBuf {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
     home.join(".config/asahi-tools")
 }
 
@@ -25,7 +30,9 @@ pub fn config_path() -> PathBuf {
 
 pub fn load() -> DashboardConfig {
     let path = config_path();
-    if !path.exists() { return DashboardConfig::default(); }
+    if !path.exists() {
+        return DashboardConfig::default();
+    }
 
     let content = match std::fs::read_to_string(&path) {
         Ok(c) => c,
@@ -34,10 +41,15 @@ pub fn load() -> DashboardConfig {
 
     match serde_json::from_str::<DashboardConfig>(&content) {
         Ok(cfg) if cfg.version == 1 => {
-            let filtered: Vec<WidgetInstance> = cfg.widgets.into_iter()
+            let filtered: Vec<WidgetInstance> = cfg
+                .widgets
+                .into_iter()
                 .filter(|w| super::find_def(&w.widget_type).is_some())
                 .collect();
-            DashboardConfig { version: 1, widgets: filtered }
+            DashboardConfig {
+                version: 1,
+                widgets: filtered,
+            }
         }
         _ => {
             let backup = config_dir().join("dashboard.json.bak");
@@ -67,7 +79,10 @@ pub fn reset() -> DashboardConfig {
 #[allow(dead_code)]
 pub fn normalize_sizes(cfg: &mut DashboardConfig) {
     for w in &mut cfg.widgets {
-        if !matches!(w.size, WidgetSize::Small | WidgetSize::Medium | WidgetSize::Large) {
+        if !matches!(
+            w.size,
+            WidgetSize::Small | WidgetSize::Medium | WidgetSize::Large
+        ) {
             w.size = WidgetSize::Medium;
         }
     }

@@ -18,11 +18,18 @@ struct State {
 }
 
 impl State {
-    fn init(cfg: &NotifyConfig, cap: Option<u32>, target: u32, max_temp: f64, override_active: bool) -> Self {
+    fn init(
+        cfg: &NotifyConfig,
+        cap: Option<u32>,
+        target: u32,
+        max_temp: f64,
+        override_active: bool,
+    ) -> Self {
         let mut s = Self::default();
         if let Some(c) = cap {
             s.battery_target_triggered = cfg.battery_target_reached.enabled && c >= target;
-            s.battery_low_triggered = cfg.battery_low.enabled && (c as f64) <= cfg.battery_low.threshold;
+            s.battery_low_triggered =
+                cfg.battery_low.enabled && (c as f64) <= cfg.battery_low.threshold;
         }
         s.thermal_triggered = cfg.thermal_high.enabled && max_temp >= cfg.thermal_high.threshold;
         s.override_was_active = override_active;
@@ -46,7 +53,10 @@ fn main() {
     let cap = get_battery_capacity().ok();
     let charge_st = charge::status();
     let target = charge_st.as_ref().map(|c| c.effective_target).unwrap_or(80);
-    let override_active = charge_st.as_ref().map(|c| c.override_active).unwrap_or(false);
+    let override_active = charge_st
+        .as_ref()
+        .map(|c| c.override_active)
+        .unwrap_or(false);
     let (max_temp, _fan_peak) = read_thermal();
 
     let mut state = State::init(&cfg, cap, target, max_temp, override_active);
@@ -73,7 +83,10 @@ fn main() {
         let cap = get_battery_capacity().ok();
         let charge_st = charge::status();
         let target = charge_st.as_ref().map(|c| c.effective_target).unwrap_or(80);
-        let override_active = charge_st.as_ref().map(|c| c.override_active).unwrap_or(false);
+        let override_active = charge_st
+            .as_ref()
+            .map(|c| c.override_active)
+            .unwrap_or(false);
         let (max_temp, fan_peak) = read_thermal();
 
         // ── battery target reached ─────────────────────────
@@ -82,7 +95,10 @@ fn main() {
             if at && !state.battery_target_triggered && cfg.battery_target_reached.enabled {
                 notify(
                     &format!("Battery at {}%", c),
-                    &format!("Target {}% reached. Unplug for best battery health.", target),
+                    &format!(
+                        "Target {}% reached. Unplug for best battery health.",
+                        target
+                    ),
                     "battery-good",
                     "normal",
                 );
@@ -156,13 +172,23 @@ fn read_thermal() -> (f64, f64) {
         Some(h) => h,
         None => return (0.0, 0.0),
     };
-    let max_t = scan_temps(&hwmon).iter().map(|t| t.celsius).fold(0.0_f64, f64::max);
+    let max_t = scan_temps(&hwmon)
+        .iter()
+        .map(|t| t.celsius)
+        .fold(0.0_f64, f64::max);
     let fans = scan_fans(&hwmon);
     // Peak fan as fraction of max — need to compute avg of "load"
-    let peak = fans.iter().map(|f| {
-        let max = f.max.unwrap_or(6500) as f64;
-        if max > 0.0 { f.rpm as f64 / max } else { 0.0 }
-    }).fold(0.0_f64, f64::max);
+    let peak = fans
+        .iter()
+        .map(|f| {
+            let max = f.max.unwrap_or(6500) as f64;
+            if max > 0.0 {
+                f.rpm as f64 / max
+            } else {
+                0.0
+            }
+        })
+        .fold(0.0_f64, f64::max);
     (max_t, peak)
 }
 

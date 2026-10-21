@@ -225,12 +225,16 @@ fn handle_request(req: &Request, hwmon: &str, state: &Arc<Mutex<State>>) -> serd
                 st.manual_targets = vec![None; 8];
             }
             let _ = std::process::Command::new("modprobe")
-                .args(["-r", "macsmc_hwmon"]).status();
+                .args(["-r", "macsmc_hwmon"])
+                .status();
             std::thread::sleep(std::time::Duration::from_millis(300));
             match std::process::Command::new("modprobe")
-                .args(["macsmc_hwmon", "fan_control=1"]).status()
+                .args(["macsmc_hwmon", "fan_control=1"])
+                .status()
             {
-                Ok(s) if s.success() => serde_json::json!({"ok": true, "note": "manual control released"}),
+                Ok(s) if s.success() => {
+                    serde_json::json!({"ok": true, "note": "manual control released"})
+                }
                 _ => serde_json::json!({"ok": false, "error": "module reload failed"}),
             }
         }

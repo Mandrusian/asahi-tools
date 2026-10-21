@@ -22,7 +22,12 @@ struct Config {
 
 impl Default for Config {
     fn default() -> Self {
-        Self { target: 80, hysteresis: 2, max_temp_c: 45, poll_secs: 30 }
+        Self {
+            target: 80,
+            hysteresis: 2,
+            max_temp_c: 45,
+            poll_secs: 30,
+        }
     }
 }
 
@@ -107,9 +112,15 @@ fn set_charging(cfg: &Config, enable: bool) -> Result<(), String> {
 #[serde(tag = "cmd", rename_all = "snake_case")]
 enum Request {
     Status,
-    Override { percent: u32, duration_secs: u64 },
+    Override {
+        percent: u32,
+        duration_secs: u64,
+    },
     CancelOverride,
-    SetTarget { target: u32, hysteresis: Option<u32> },
+    SetTarget {
+        target: u32,
+        hysteresis: Option<u32>,
+    },
     Reload,
 }
 
@@ -186,7 +197,10 @@ fn main() {
                     std::process::exit(1);
                 }
             };
-            cli_send(&Request::Override { percent, duration_secs: dur });
+            cli_send(&Request::Override {
+                percent,
+                duration_secs: dur,
+            });
         }
         "cancel" => cli_send(&Request::CancelOverride),
         "set-target" => {
@@ -336,11 +350,22 @@ fn tick(st: &mut State) -> Result<(), String> {
         set_charging(&st.cfg, want_enabled)?;
         st.charging_enabled = want_enabled;
         st.last_action = if want_enabled {
-            format!("charging enabled (cap={:?}, target={}%)", cap, effective_target)
+            format!(
+                "charging enabled (cap={:?}, target={}%)",
+                cap, effective_target
+            )
         } else if too_hot {
-            format!("paused (temp {:.1}C > {}C)", temp.unwrap_or(0.0), st.cfg.max_temp_c)
+            format!(
+                "paused (temp {:.1}C > {}C)",
+                temp.unwrap_or(0.0),
+                st.cfg.max_temp_c
+            )
         } else {
-            format!("paused at {}% (target {}%)", cap.unwrap_or(0), effective_target)
+            format!(
+                "paused at {}% (target {}%)",
+                cap.unwrap_or(0),
+                effective_target
+            )
         };
     } else if st.last_action.is_empty() {
         st.last_action = format!("steady (cap={:?}, temp={:?})", cap, temp);
@@ -373,9 +398,9 @@ fn handle_request(req: Request, state: &Arc<Mutex<State>>) -> serde_json::Value 
     let mut st = state.lock().unwrap();
     match req {
         Request::Status => {
-            let remaining = st.override_until.map(|i| {
-                i.saturating_duration_since(Instant::now()).as_secs()
-            });
+            let remaining = st
+                .override_until
+                .map(|i| i.saturating_duration_since(Instant::now()).as_secs());
             let view = StatusView {
                 ok: true,
                 capacity: st.last_capacity,
@@ -392,7 +417,10 @@ fn handle_request(req: Request, state: &Arc<Mutex<State>>) -> serde_json::Value 
             serde_json::to_value(view)
                 .unwrap_or_else(|e| serde_json::json!({"ok": false, "error": format!("{e}")}))
         }
-        Request::Override { percent, duration_secs } => {
+        Request::Override {
+            percent,
+            duration_secs,
+        } => {
             st.override_percent = Some(percent);
             st.override_until = Some(Instant::now() + Duration::from_secs(duration_secs));
             st.last_action = format!("override {}% for {}s", percent, duration_secs);

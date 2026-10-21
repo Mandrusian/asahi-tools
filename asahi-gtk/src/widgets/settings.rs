@@ -1,14 +1,27 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
 use std::cell::RefCell;
 use std::rc::Rc;
-use super::{WidgetInstance, WidgetSize};
 
 pub enum Field {
-    Number { key: &'static str, label: &'static str, min: f64, max: f64, step: f64 },
-    Toggle { key: &'static str, label: &'static str },
-    Choice { key: &'static str, label: &'static str, options: &'static [(&'static str, &'static str)] },
+    Number {
+        key: &'static str,
+        label: &'static str,
+        min: f64,
+        max: f64,
+        step: f64,
+    },
+    Toggle {
+        key: &'static str,
+        label: &'static str,
+    },
+    Choice {
+        key: &'static str,
+        label: &'static str,
+        options: &'static [(&'static str, &'static str)],
+    },
 }
 
 pub fn open(
@@ -49,15 +62,26 @@ pub fn open(
     size_group.add(&size_row);
     page.add(&size_group);
 
-    let values: Rc<RefCell<serde_json::Map<String, serde_json::Value>>> =
-        Rc::new(RefCell::new(instance.settings.as_object().cloned().unwrap_or_default()));
+    let values: Rc<RefCell<serde_json::Map<String, serde_json::Value>>> = Rc::new(RefCell::new(
+        instance.settings.as_object().cloned().unwrap_or_default(),
+    ));
 
     if !fields.is_empty() {
         let group = adw::PreferencesGroup::builder().title("Options").build();
         for field in fields {
             match field {
-                Field::Number { key, label, min, max, step } => {
-                    let cur = instance.settings.get(key).and_then(|v| v.as_f64()).unwrap_or(min);
+                Field::Number {
+                    key,
+                    label,
+                    min,
+                    max,
+                    step,
+                } => {
+                    let cur = instance
+                        .settings
+                        .get(key)
+                        .and_then(|v| v.as_f64())
+                        .unwrap_or(min);
                     let row = adw::ActionRow::builder().title(label).build();
                     let spin = gtk::SpinButton::with_range(min, max, step);
                     spin.set_value(cur);
@@ -65,12 +89,17 @@ pub fn open(
                     row.add_suffix(&spin);
                     let v = values.clone();
                     spin.connect_value_changed(move |s| {
-                        v.borrow_mut().insert(key.to_string(), serde_json::json!(s.value()));
+                        v.borrow_mut()
+                            .insert(key.to_string(), serde_json::json!(s.value()));
                     });
                     group.add(&row);
                 }
                 Field::Toggle { key, label } => {
-                    let cur = instance.settings.get(key).and_then(|v| v.as_bool()).unwrap_or(true);
+                    let cur = instance
+                        .settings
+                        .get(key)
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(true);
                     let row = adw::ActionRow::builder().title(label).build();
                     let sw = gtk::Switch::new();
                     sw.set_active(cur);
@@ -78,12 +107,21 @@ pub fn open(
                     row.add_suffix(&sw);
                     let v = values.clone();
                     sw.connect_active_notify(move |s| {
-                        v.borrow_mut().insert(key.to_string(), serde_json::json!(s.is_active()));
+                        v.borrow_mut()
+                            .insert(key.to_string(), serde_json::json!(s.is_active()));
                     });
                     group.add(&row);
                 }
-                Field::Choice { key, label, options } => {
-                    let cur = instance.settings.get(key).and_then(|v| v.as_str()).unwrap_or("");
+                Field::Choice {
+                    key,
+                    label,
+                    options,
+                } => {
+                    let cur = instance
+                        .settings
+                        .get(key)
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("");
                     let idx = options.iter().position(|(id, _)| *id == cur).unwrap_or(0) as u32;
                     let labels: Vec<&str> = options.iter().map(|(_, l)| *l).collect();
                     let row = adw::ComboRow::builder()
@@ -95,7 +133,8 @@ pub fn open(
                     let v = values.clone();
                     row.connect_selected_notify(move |r| {
                         if let Some(id) = ids.get(r.selected() as usize) {
-                            v.borrow_mut().insert(key.to_string(), serde_json::json!(*id));
+                            v.borrow_mut()
+                                .insert(key.to_string(), serde_json::json!(*id));
                         }
                     });
                     group.add(&row);

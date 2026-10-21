@@ -1,10 +1,10 @@
-pub mod dashboard;
+pub mod about;
 pub mod battery;
-pub mod thermal;
-pub mod profiles;
-pub mod network;
+pub mod dashboard;
 pub mod display;
 pub mod input;
-pub mod system;
+pub mod network;
+pub mod profiles;
 pub mod services;
-pub mod about;
+pub mod system;
+pub mod thermal;

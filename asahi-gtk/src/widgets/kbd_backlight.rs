@@ -1,25 +1,41 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
-use super::{WidgetInstance, WidgetSize};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
 
-    let group = adw::PreferencesGroup::builder().title("Keyboard Backlight").build();
+    let group = adw::PreferencesGroup::builder()
+        .title("Keyboard Backlight")
+        .build();
     let Some((cur, max)) = asahi_core::priv_daemon::get_kbd() else {
-        group.add(&gtk::Label::new(Some("Unavailable: privileged daemon not running")));
+        group.add(&gtk::Label::new(Some(
+            "Unavailable: privileged daemon not running",
+        )));
         return group.upcast();
     };
     if max == 0 {
-        group.add(&gtk::Label::new(Some("Unavailable: no kbd backlight device")));
+        group.add(&gtk::Label::new(Some(
+            "Unavailable: no kbd backlight device",
+        )));
         return group.upcast();
     }
-    let _step = inst.settings.get("step").and_then(|v| v.as_f64()).unwrap_or(5.0);
-    let sub = if small { String::new() } else { format!("{} / {}", cur, max) };
+    let _step = inst
+        .settings
+        .get("step")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(5.0);
+    let sub = if small {
+        String::new()
+    } else {
+        format!("{} / {}", cur, max)
+    };
     let row = adw::ActionRow::builder()
         .title("Brightness")
         .subtitle(&sub)

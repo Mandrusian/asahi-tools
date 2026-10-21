@@ -1,20 +1,28 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
+use gtk::glib;
 use gtk::prelude::*;
 use libadwaita as adw;
-use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use gtk::glib;
-use super::{WidgetInstance, WidgetSize};
+use std::sync::{Arc, Mutex};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
     let large = size == WidgetSize::Large;
-    let show_adv = inst.settings.get("show_advanced").and_then(|v| v.as_bool()).unwrap_or(large);
+    let show_adv = inst
+        .settings
+        .get("show_advanced")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(large);
 
-    let group = adw::PreferencesGroup::builder().title("Wi-Fi Signal").build();
+    let group = adw::PreferencesGroup::builder()
+        .title("Wi-Fi Signal")
+        .build();
 
     let details = crate::helper::get_wifi_details();
     if !details.available {
@@ -24,7 +32,10 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
 
     // Signal percentage label
     if !small {
-        let label = gtk::Label::new(Some(&format!("{}  ·  {:.0}%  ·  {}", details.ssid, details.signal, details.speed)));
+        let label = gtk::Label::new(Some(&format!(
+            "{}  ·  {:.0}%  ·  {}",
+            details.ssid, details.signal, details.speed
+        )));
         label.set_xalign(0.0);
         label.add_css_class("dim-label");
         group.add(&label);
@@ -42,8 +53,13 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     });
     row.append(&bars);
 
-    let window = inst.settings.get("window").and_then(|v| v.as_u64()).unwrap_or(60) as usize;
-    let history: Arc<Mutex<VecDeque<f64>>> = Arc::new(Mutex::new(VecDeque::from(vec![sig_now; window.min(120)])));
+    let window = inst
+        .settings
+        .get("window")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(60) as usize;
+    let history: Arc<Mutex<VecDeque<f64>>> =
+        Arc::new(Mutex::new(VecDeque::from(vec![sig_now; window.min(120)])));
     let hist_draw = history.clone();
     let spark = gtk::DrawingArea::new();
     spark.set_content_height(if small { 40 } else { 60 });
@@ -87,7 +103,9 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let hist_tick = history.clone();
     let spark_weak = spark.downgrade();
     glib::timeout_add_seconds_local(2, move || {
-        let Some(_) = spark_weak.upgrade() else { return glib::ControlFlow::Break };
+        let Some(_) = spark_weak.upgrade() else {
+            return glib::ControlFlow::Break;
+        };
         if let Some(sig) = crate::helper::get_wifi_signal() {
             let mut h = hist_tick.lock().unwrap();
             h.push_back(sig);

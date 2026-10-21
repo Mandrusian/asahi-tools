@@ -1,10 +1,10 @@
-use libadwaita as adw;
+use crate::widgets::{self, config::DashboardConfig, WidgetInstance, WidgetSize};
 use adw::prelude::*;
-use gtk::prelude::*;
 use gtk::glib;
-use std::rc::Rc;
+use gtk::prelude::*;
+use libadwaita as adw;
 use std::cell::{Cell, RefCell};
-use crate::widgets::{self, WidgetInstance, WidgetSize, config::DashboardConfig};
+use std::rc::Rc;
 
 pub fn build() -> gtk::Widget {
     let cfg: Rc<RefCell<DashboardConfig>> = Rc::new(RefCell::new(widgets::config::load()));
@@ -51,8 +51,11 @@ pub fn build() -> gtk::Widget {
             title.set_hexpand(true);
             header.append(&title);
 
-            let edit_btn = gtk::Button::with_label(if edit.get() { "Done" } else { "Edit Dashboard" });
-            if edit.get() { edit_btn.add_css_class("suggested-action"); }
+            let edit_btn =
+                gtk::Button::with_label(if edit.get() { "Done" } else { "Edit Dashboard" });
+            if edit.get() {
+                edit_btn.add_css_class("suggested-action");
+            }
             header.append(&edit_btn);
 
             let add_btn = gtk::Button::with_label("Add Widget");
@@ -80,11 +83,16 @@ pub fn build() -> gtk::Widget {
             let mut row: i32 = 0;
 
             for inst in &sorted {
-                let Some(def) = widgets::find_def(&inst.widget_type) else { continue };
+                let Some(def) = widgets::find_def(&inst.widget_type) else {
+                    continue;
+                };
                 let content = (def.build)(inst);
 
-                let size = inst.settings.get("__size_hint__")
-                    .and_then(|v| v.as_str()).map(WidgetSize::from_str)
+                let size = inst
+                    .settings
+                    .get("__size_hint__")
+                    .and_then(|v| v.as_str())
+                    .map(WidgetSize::from_str)
                     .unwrap_or(inst.size);
 
                 // on_remove
@@ -118,33 +126,39 @@ pub fn build() -> gtk::Widget {
                 // apply
                 let cfg_a = cfg.clone();
                 let this_a = this_rebuild.clone();
-                let apply: widgets::ApplySettings = Rc::new(move |id: String, json: serde_json::Value| {
-                    let new_size = json.get("__size_hint__")
-                        .and_then(|v| v.as_str()).map(WidgetSize::from_str);
-                    let mut clean = json.clone();
-                    if let Some(obj) = clean.as_object_mut() {
-                        obj.remove("__size_hint__");
-                    }
-                    let mut cfg = cfg_a.borrow_mut();
-                    if let Some(w) = cfg.widgets.iter_mut().find(|w| w.id == id) {
-                        w.settings = clean;
-                        if let Some(sz) = new_size { w.size = sz; }
-                    }
-                    let _ = widgets::config::save(&cfg);
-                    drop(cfg);
-                    this_a();
-                });
+                let apply: widgets::ApplySettings =
+                    Rc::new(move |id: String, json: serde_json::Value| {
+                        let new_size = json
+                            .get("__size_hint__")
+                            .and_then(|v| v.as_str())
+                            .map(WidgetSize::from_str);
+                        let mut clean = json.clone();
+                        if let Some(obj) = clean.as_object_mut() {
+                            obj.remove("__size_hint__");
+                        }
+                        let mut cfg = cfg_a.borrow_mut();
+                        if let Some(w) = cfg.widgets.iter_mut().find(|w| w.id == id) {
+                            w.settings = clean;
+                            if let Some(sz) = new_size {
+                                w.size = sz;
+                            }
+                        }
+                        let _ = widgets::config::save(&cfg);
+                        drop(cfg);
+                        this_a();
+                    });
 
-                let wrapped = widgets::frame::wrap(
-                    inst, content, edit.get(),
-                    on_remove, on_move, apply,
-                );
+                let wrapped =
+                    widgets::frame::wrap(inst, content, edit.get(), on_remove, on_move, apply);
                 widgets::frame::apply_size(&wrapped, size);
 
                 let span = size.columns();
                 grid.attach(&wrapped, col, row, span, 1);
                 col += span;
-                if col >= 2 { col = 0; row += 1; }
+                if col >= 2 {
+                    col = 0;
+                    row += 1;
+                }
             }
 
             vbox.append(&grid);
@@ -163,26 +177,37 @@ pub fn build() -> gtk::Widget {
                 let cfg = cfg.clone();
                 let this = this_rebuild.clone();
                 add_btn.connect_clicked(move |btn| {
-                    let Some(parent) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok()) else {
+                    let Some(parent) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok())
+                    else {
                         return;
                     };
-                    let existing: Vec<String> = cfg.borrow().widgets.iter().map(|w| w.widget_type.clone()).collect();
+                    let existing: Vec<String> = cfg
+                        .borrow()
+                        .widgets
+                        .iter()
+                        .map(|w| w.widget_type.clone())
+                        .collect();
                     let cfg2 = cfg.clone();
                     let this2 = this.clone();
-                    widgets::picker::open(&parent, existing, Rc::new(move |wt: &'static str| {
-                        let mut c = cfg2.borrow_mut();
-                        let order = c.widgets.len() as u32;
-                        c.widgets.push(widgets::new_instance(wt, order));
-                        let _ = widgets::config::save(&c);
-                        drop(c);
-                        this2();
-                    }));
+                    widgets::picker::open(
+                        &parent,
+                        existing,
+                        Rc::new(move |wt: &'static str| {
+                            let mut c = cfg2.borrow_mut();
+                            let order = c.widgets.len() as u32;
+                            c.widgets.push(widgets::new_instance(wt, order));
+                            let _ = widgets::config::save(&c);
+                            drop(c);
+                            this2();
+                        }),
+                    );
                 });
             }
             {
                 let this = this_rebuild.clone();
                 reset_btn.connect_clicked(move |btn| {
-                    let Some(parent) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok()) else {
+                    let Some(parent) = btn.root().and_then(|r| r.downcast::<gtk::Window>().ok())
+                    else {
                         return;
                     };
                     let dlg = gtk::MessageDialog::builder()

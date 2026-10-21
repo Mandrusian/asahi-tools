@@ -1,8 +1,8 @@
+use super::{registry, OnAdd};
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
 use std::rc::Rc;
-use super::{registry, OnAdd};
 
 pub fn open(parent: &gtk::Window, already_present: Vec<String>, on_add: OnAdd) {
     let win = adw::Window::builder()
@@ -18,7 +18,9 @@ pub fn open(parent: &gtk::Window, already_present: Vec<String>, on_add: OnAdd) {
     toolbar.add_top_bar(&header);
 
     let page = adw::PreferencesPage::new();
-    let group = adw::PreferencesGroup::builder().title("Available widgets").build();
+    let group = adw::PreferencesGroup::builder()
+        .title("Available widgets")
+        .build();
 
     let win_for_close = win.clone();
     for def in registry() {

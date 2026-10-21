@@ -1,22 +1,28 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
+use gtk::glib;
 use gtk::prelude::*;
 use libadwaita as adw;
-use std::sync::{Arc, Mutex};
-use std::collections::VecDeque;
 use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::rc::Rc;
-use gtk::glib;
-use super::{WidgetInstance, WidgetSize};
+use std::sync::{Arc, Mutex};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
     let graph_h = if small { 40 } else { 100 };
 
     let group = adw::PreferencesGroup::builder().title("CPU Usage").build();
-    let window = inst.settings.get("window").and_then(|v| v.as_u64()).unwrap_or(60) as usize;
+    let window = inst
+        .settings
+        .get("window")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(60) as usize;
     let history = Arc::new(Mutex::new(VecDeque::from(vec![0.0; window.min(120)])));
     let prev = Rc::new(RefCell::new(None::<(u64, u64)>));
 
@@ -44,7 +50,9 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let label_tick = label.clone();
     let prev_tick = prev.clone();
     glib::timeout_add_seconds_local(1, move || {
-        if !da.is_mapped() { return glib::ControlFlow::Continue; }
+        if !da.is_mapped() {
+            return glib::ControlFlow::Continue;
+        }
         if let Some((idle, total)) = crate::helper::read_cpu_raw() {
             let mut p = prev_tick.borrow_mut();
             if let Some((pi, pt)) = *p {

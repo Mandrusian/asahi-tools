@@ -1,17 +1,26 @@
+use gtk::cairo;
+use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::process::Command;
-use std::collections::VecDeque;
-use gtk::cairo;
 
 pub fn find_binary(name: &str) -> Option<PathBuf> {
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    for c in [home.join(".local/bin").join(name), PathBuf::from("/usr/local/bin").join(name)] {
-        if c.exists() { return Some(c); }
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_default();
+    for c in [
+        home.join(".local/bin").join(name),
+        PathBuf::from("/usr/local/bin").join(name),
+    ] {
+        if c.exists() {
+            return Some(c);
+        }
     }
     if let Ok(o) = Command::new("which").arg(name).output() {
         if o.status.success() {
             let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            if !s.is_empty() { return Some(PathBuf::from(s)); }
+            if !s.is_empty() {
+                return Some(PathBuf::from(s));
+            }
         }
     }
     None
@@ -20,13 +29,21 @@ pub fn find_binary(name: &str) -> Option<PathBuf> {
 pub fn spawn_in_terminal(name: &str) {
     if let Some(bin) = find_binary(name) {
         for term in ["kgx", "konsole", "alacritty", "foot", "xterm"] {
-            if Command::new(term).args(["-e", &bin.display().to_string()]).spawn().is_ok() { break; }
+            if Command::new(term)
+                .args(["-e", &bin.display().to_string()])
+                .spawn()
+                .is_ok()
+            {
+                break;
+            }
         }
     }
 }
 
 pub fn read_file(path: &str) -> Option<String> {
-    std::fs::read_to_string(path).ok().map(|s| s.trim().to_string())
+    std::fs::read_to_string(path)
+        .ok()
+        .map(|s| s.trim().to_string())
 }
 
 fn apple_sensor_name(raw: &str) -> Option<&'static str> {
@@ -52,8 +69,11 @@ pub fn get_hwmon_sensors() -> Vec<(String, f64)> {
                     if let Ok(milli) = val.parse::<f64>() {
                         let mut label = read_file(&format!("{}/temp{}_label", path.display(), i))
                             .unwrap_or_else(|| format!("{} temp{}", chip, i));
-                        if let Some(friendly) = apple_sensor_name(&label) { label = friendly.to_string(); }
-                        else if label == "NAND" { label = "SSD".into(); }
+                        if let Some(friendly) = apple_sensor_name(&label) {
+                            label = friendly.to_string();
+                        } else if label == "NAND" {
+                            label = "SSD".into();
+                        }
                         out.push((label, milli / 1000.0));
                     }
                 }
@@ -74,9 +94,11 @@ pub fn get_hwmon_fans() -> Vec<(String, u32, u32, u32)> {
                 if let Some(val) = read_file(&input) {
                     if let Ok(rpm) = val.parse::<u32>() {
                         let min = read_file(&format!("{}/fan{}_min", path.display(), i))
-                            .and_then(|v| v.parse().ok()).unwrap_or(1000);
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(1000);
                         let max = read_file(&format!("{}/fan{}_max", path.display(), i))
-                            .and_then(|v| v.parse().ok()).unwrap_or(6500);
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(6500);
                         out.push((format!("{} Fan {}", name, i), rpm, min, max));
                     }
                 }
@@ -89,11 +111,19 @@ pub fn get_hwmon_fans() -> Vec<(String, u32, u32, u32)> {
 pub fn get_cpu_usage() -> Option<f64> {
     let stat = std::fs::read_to_string("/proc/stat").ok()?;
     let line = stat.lines().next()?;
-    let parts: Vec<f64> = line.split_whitespace().skip(1).filter_map(|x| x.parse().ok()).collect();
-    if parts.len() < 4 { return None; }
+    let parts: Vec<f64> = line
+        .split_whitespace()
+        .skip(1)
+        .filter_map(|x| x.parse().ok())
+        .collect();
+    if parts.len() < 4 {
+        return None;
+    }
     let idle = parts[3];
     let total: f64 = parts.iter().sum();
-    if total <= 0.0 { return None; }
+    if total <= 0.0 {
+        return None;
+    }
     Some(100.0 - (idle / total * 100.0))
 }
 
@@ -103,13 +133,23 @@ pub fn get_memory_usage() -> Option<f64> {
     let mut avail = 0.0;
     for line in mem.lines() {
         if let Some(v) = line.strip_prefix("MemTotal:") {
-            total = v.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+            total = v
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0.0);
         }
         if let Some(v) = line.strip_prefix("MemAvailable:") {
-            avail = v.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+            avail = v
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0.0);
         }
     }
-    if total <= 0.0 { return None; }
+    if total <= 0.0 {
+        return None;
+    }
     Some(((total - avail) / total) * 100.0)
 }
 
@@ -119,10 +159,18 @@ pub fn get_memory_gb() -> Option<(f64, f64)> {
     let mut avail = 0.0;
     for line in mem.lines() {
         if let Some(v) = line.strip_prefix("MemTotal:") {
-            total = v.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+            total = v
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0.0);
         }
         if let Some(v) = line.strip_prefix("MemAvailable:") {
-            avail = v.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(0.0);
+            avail = v
+                .split_whitespace()
+                .next()
+                .and_then(|x| x.parse().ok())
+                .unwrap_or(0.0);
         }
     }
     let to_gb = |kb: f64| kb / 1024.0 / 1024.0;
@@ -131,7 +179,10 @@ pub fn get_memory_gb() -> Option<(f64, f64)> {
 
 pub fn get_uptime_secs() -> Option<u64> {
     read_file("/proc/uptime")?
-        .split_whitespace().next()?.parse().ok()
+        .split_whitespace()
+        .next()?
+        .parse()
+        .ok()
 }
 
 pub fn get_bootloader() -> Option<String> {
@@ -144,12 +195,17 @@ pub fn get_kernel_version() -> String {
 }
 
 pub fn get_wifi_signal() -> Option<f64> {
-    if let Ok(out) = Command::new("nmcli").args(["-t", "-f", "IN-USE,SIGNAL", "dev", "wifi"]).output() {
+    if let Ok(out) = Command::new("nmcli")
+        .args(["-t", "-f", "IN-USE,SIGNAL", "dev", "wifi"])
+        .output()
+    {
         let txt = String::from_utf8_lossy(&out.stdout);
         for line in txt.lines() {
             if line.starts_with('*') {
                 let parts: Vec<&str> = line.split(':').collect();
-                if parts.len() >= 2 { return parts[1].parse().ok(); }
+                if parts.len() >= 2 {
+                    return parts[1].parse().ok();
+                }
             }
         }
     }
@@ -158,7 +214,9 @@ pub fn get_wifi_signal() -> Option<f64> {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() >= 4 {
                 let q = parts[3].trim_end_matches('.');
-                if let Ok(v) = q.parse::<f64>() { return Some((v * 100.0 / 70.0).min(100.0)); }
+                if let Ok(v) = q.parse::<f64>() {
+                    return Some((v * 100.0 / 70.0).min(100.0));
+                }
             }
         }
     }
@@ -180,14 +238,26 @@ pub fn get_disk_usage() -> Option<f64> {
     let txt = String::from_utf8_lossy(&s.stdout);
     let line = txt.lines().nth(1)?;
     let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 5 { return None; }
+    if parts.len() < 5 {
+        return None;
+    }
     let total: f64 = parts[1].parse().ok()?;
     let used: f64 = parts[2].parse().ok()?;
-    if total <= 0.0 { return None; }
+    if total <= 0.0 {
+        return None;
+    }
     Some(used / total * 100.0)
 }
 
-pub fn draw_graph(cr: &cairo::Context, w: i32, h: i32, data: &VecDeque<f64>, min: f64, max: f64, color: (f64, f64, f64)) {
+pub fn draw_graph(
+    cr: &cairo::Context,
+    w: i32,
+    h: i32,
+    data: &VecDeque<f64>,
+    min: f64,
+    max: f64,
+    color: (f64, f64, f64),
+) {
     cr.set_source_rgb(0.04, 0.04, 0.04);
     cr.paint().unwrap();
     if data.len() < 2 {
@@ -196,7 +266,10 @@ pub fn draw_graph(cr: &cairo::Context, w: i32, h: i32, data: &VecDeque<f64>, min
         cr.set_font_size(12.0);
         let text = "No data yet";
         if let Ok(extents) = cr.text_extents(text) {
-            cr.move_to((w as f64 - extents.width()) / 2.0, (h as f64 - extents.height()) / 2.0 + extents.height());
+            cr.move_to(
+                (w as f64 - extents.width()) / 2.0,
+                (h as f64 - extents.height()) / 2.0 + extents.height(),
+            );
             cr.show_text(text).unwrap();
         }
         return;
@@ -210,12 +283,24 @@ pub fn draw_graph(cr: &cairo::Context, w: i32, h: i32, data: &VecDeque<f64>, min
         let x = i as f64 * step;
         let norm = (val - min) / range;
         let y = h as f64 - (norm.clamp(0.0, 1.0) * h as f64);
-        if first { cr.move_to(x, y); first = false; } else { cr.line_to(x, y); }
+        if first {
+            cr.move_to(x, y);
+            first = false;
+        } else {
+            cr.line_to(x, y);
+        }
     }
     let _ = cr.stroke();
 }
 
-pub fn draw_gauge(cr: &cairo::Context, w: i32, h: i32, pct: f64, color: (f64, f64, f64), label: &str) {
+pub fn draw_gauge(
+    cr: &cairo::Context,
+    w: i32,
+    h: i32,
+    pct: f64,
+    color: (f64, f64, f64),
+    label: &str,
+) {
     let center = (w as f64 / 2.0, h as f64 / 2.0);
     let radius = (w.min(h) as f64 / 2.0) - 12.0;
     cr.set_line_width(8.0);
@@ -224,7 +309,13 @@ pub fn draw_gauge(cr: &cairo::Context, w: i32, h: i32, pct: f64, color: (f64, f6
     let _ = cr.stroke();
     let sweep = 2.0 * std::f64::consts::PI * (pct / 100.0).clamp(0.0, 1.0);
     cr.set_source_rgb(color.0, color.1, color.2);
-    cr.arc(center.0, center.1, radius, -std::f64::consts::FRAC_PI_2, -std::f64::consts::FRAC_PI_2 + sweep);
+    cr.arc(
+        center.0,
+        center.1,
+        radius,
+        -std::f64::consts::FRAC_PI_2,
+        -std::f64::consts::FRAC_PI_2 + sweep,
+    );
     let _ = cr.stroke();
     cr.set_source_rgb(1.0, 1.0, 1.0);
     cr.set_font_size(16.0);
@@ -247,8 +338,14 @@ pub fn unavailable_widget(reason: &str) -> gtk::Widget {
 pub fn read_cpu_raw() -> Option<(u64, u64)> {
     let stat = std::fs::read_to_string("/proc/stat").ok()?;
     let line = stat.lines().next()?;
-    let parts: Vec<u64> = line.split_whitespace().skip(1).filter_map(|x| x.parse().ok()).collect();
-    if parts.len() < 4 { return None; }
+    let parts: Vec<u64> = line
+        .split_whitespace()
+        .skip(1)
+        .filter_map(|x| x.parse().ok())
+        .collect();
+    if parts.len() < 4 {
+        return None;
+    }
     Some((parts[3], parts.iter().sum()))
 }
 
@@ -298,40 +395,61 @@ impl Default for WifiDetails {
     fn default() -> Self {
         Self {
             available: false,
-            ssid: "—".into(), ipv4: "—".into(), ipv6: "—".into(),
-            mac: "—".into(), gateway: "—".into(), dns: "—".into(),
-            bssid: "—".into(), signal: 0, speed: "—".into(),
+            ssid: "—".into(),
+            ipv4: "—".into(),
+            ipv6: "—".into(),
+            mac: "—".into(),
+            gateway: "—".into(),
+            dns: "—".into(),
+            bssid: "—".into(),
+            signal: 0,
+            speed: "—".into(),
         }
     }
 }
 
 fn nmcli_multiline(args: &[&str]) -> Vec<std::collections::HashMap<String, String>> {
-    let out = Command::new("nmcli").arg("-m").arg("multiline").args(args).output().ok();
+    let out = Command::new("nmcli")
+        .arg("-m")
+        .arg("multiline")
+        .args(args)
+        .output()
+        .ok();
     let mut records = vec![];
     let mut cur = std::collections::HashMap::new();
     if let Some(o) = out {
         let txt = String::from_utf8_lossy(&o.stdout);
         for line in txt.lines() {
             if line.is_empty() {
-                if !cur.is_empty() { records.push(std::mem::take(&mut cur)); }
+                if !cur.is_empty() {
+                    records.push(std::mem::take(&mut cur));
+                }
             } else if let Some((k, v)) = line.split_once(':') {
                 cur.insert(k.trim().to_string(), v.to_string());
             }
         }
-        if !cur.is_empty() { records.push(cur); }
+        if !cur.is_empty() {
+            records.push(cur);
+        }
     }
     records
 }
 
 pub fn get_wifi_details() -> WifiDetails {
     let mut d = WifiDetails::default();
-    let dev = Command::new("nmcli").args(["-t", "-f", "DEVICE,TYPE", "dev"]).output().ok()
-        .and_then(|o| String::from_utf8_lossy(&o.stdout).lines()
-            .find_map(|l| {
+    let dev = Command::new("nmcli")
+        .args(["-t", "-f", "DEVICE,TYPE", "dev"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout).lines().find_map(|l| {
                 let (dev, ty) = l.split_once(':')?;
                 (ty == "wifi").then(|| dev.to_string())
-            }));
-    let Some(dev) = dev else { return d; };
+            })
+        });
+    let Some(dev) = dev else {
+        return d;
+    };
     d.available = true;
 
     for r in nmcli_multiline(&["-f", "ACTIVE,SSID,SIGNAL,RATE,BSSID", "dev", "wifi"]) {
@@ -345,26 +463,44 @@ pub fn get_wifi_details() -> WifiDetails {
         }
     }
 
-    if let Ok(out) = Command::new("ip").args(["-j", "addr", "show", &dev]).output() {
+    if let Ok(out) = Command::new("ip")
+        .args(["-j", "addr", "show", &dev])
+        .output()
+    {
         if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout) {
             if let Some(iface) = arr.first() {
-                d.mac = iface.get("address").and_then(|v| v.as_str()).unwrap_or("—").to_string();
+                d.mac = iface
+                    .get("address")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("—")
+                    .to_string();
                 if let Some(addrs) = iface.get("addr_info").and_then(|v| v.as_array()) {
                     for a in addrs {
                         let fam = a.get("family").and_then(|v| v.as_str()).unwrap_or("");
                         let local = a.get("local").and_then(|v| v.as_str()).unwrap_or("");
-                        if fam == "inet" && !local.is_empty() { d.ipv4 = local.to_string(); }
-                        else if fam == "inet6" && !local.starts_with("fe80") && !local.is_empty() { d.ipv6 = local.to_string(); }
+                        if fam == "inet" && !local.is_empty() {
+                            d.ipv4 = local.to_string();
+                        } else if fam == "inet6" && !local.starts_with("fe80") && !local.is_empty()
+                        {
+                            d.ipv6 = local.to_string();
+                        }
                     }
                 }
             }
         }
     }
 
-    if let Ok(out) = Command::new("ip").args(["-j", "route", "get", "1.1.1.1"]).output() {
+    if let Ok(out) = Command::new("ip")
+        .args(["-j", "route", "get", "1.1.1.1"])
+        .output()
+    {
         if let Ok(arr) = serde_json::from_slice::<Vec<serde_json::Value>>(&out.stdout) {
             if let Some(obj) = arr.first() {
-                d.gateway = obj.get("gateway").and_then(|v| v.as_str()).unwrap_or("—").to_string();
+                d.gateway = obj
+                    .get("gateway")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("—")
+                    .to_string();
             }
         }
     }
@@ -376,7 +512,9 @@ pub fn get_wifi_details() -> WifiDetails {
                 list.push(rest.trim().to_string());
             }
         }
-        if !list.is_empty() { d.dns = list.join(", "); }
+        if !list.is_empty() {
+            d.dns = list.join(", ");
+        }
     }
 
     d

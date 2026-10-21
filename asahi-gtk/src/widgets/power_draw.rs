@@ -1,15 +1,17 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
+use gtk::glib;
 use gtk::prelude::*;
 use libadwaita as adw;
-use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use gtk::glib;
-use super::{WidgetInstance, WidgetSize};
+use std::sync::{Arc, Mutex};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
     let graph_h = if small { 40 } else { 100 };
 
@@ -40,7 +42,9 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let hist_tick = history.clone();
     let label_tick = label.clone();
     glib::timeout_add_seconds_local(2, move || {
-        if !da.is_mapped() { return glib::ControlFlow::Continue; }
+        if !da.is_mapped() {
+            return glib::ControlFlow::Continue;
+        }
         if let Some(p) = crate::helper::get_power_draw() {
             let mut h = hist_tick.lock().unwrap();
             h.push_back(p);

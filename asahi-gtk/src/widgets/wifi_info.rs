@@ -1,12 +1,14 @@
+use super::{WidgetInstance, WidgetSize};
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
-use super::{WidgetInstance, WidgetSize};
 
 pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     let size = if let Some(s) = inst.settings.get("__size_hint__").and_then(|v| v.as_str()) {
         WidgetSize::from_str(s)
-    } else { inst.size };
+    } else {
+        inst.size
+    };
     let small = size == WidgetSize::Small;
 
     let group = adw::PreferencesGroup::builder().title("Wi-Fi Info").build();
@@ -16,7 +18,11 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
         return group.upcast();
     }
 
-    let hide = inst.settings.get("hide_sensitive").and_then(|v| v.as_bool()).unwrap_or(true);
+    let hide = inst
+        .settings
+        .get("hide_sensitive")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
 
     let mut rows: Vec<(&str, String, bool)> = vec![
         ("SSID", details.ssid.clone(), hide),
@@ -32,7 +38,11 @@ pub fn build(inst: &WidgetInstance) -> gtk::Widget {
     }
 
     for (k, v, hidden) in rows {
-        let display = if hidden && !v.is_empty() && v != "—" { "••••••" } else { &v };
+        let display = if hidden && !v.is_empty() && v != "—" {
+            "••••••"
+        } else {
+            &v
+        };
         let row = adw::ActionRow::builder().title(k).subtitle(display).build();
         if !small {
             let copy_btn = gtk::Button::from_icon_name("edit-copy-symbolic");

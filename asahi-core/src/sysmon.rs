@@ -25,12 +25,18 @@ pub struct FanView {
 
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct Status {
-    #[serde(default)] pub ok: bool,
-    #[serde(default)] pub readonly: bool,
-    #[serde(default)] pub max_temp_c: f64,
-    #[serde(default)] pub temps: Vec<(String, f64)>,
-    #[serde(default)] pub fans: Vec<FanView>,
-    #[serde(default)] pub message: Option<String>,
+    #[serde(default)]
+    pub ok: bool,
+    #[serde(default)]
+    pub readonly: bool,
+    #[serde(default)]
+    pub max_temp_c: f64,
+    #[serde(default)]
+    pub temps: Vec<(String, f64)>,
+    #[serde(default)]
+    pub fans: Vec<FanView>,
+    #[serde(default)]
+    pub message: Option<String>,
 }
 
 pub fn query(req: &Request) -> std::io::Result<Status> {
@@ -40,8 +46,7 @@ pub fn query(req: &Request) -> std::io::Result<Status> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    serde_json::from_str(&line)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+    serde_json::from_str(&line).map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
 }
 
 pub fn status() -> Option<Status> {
