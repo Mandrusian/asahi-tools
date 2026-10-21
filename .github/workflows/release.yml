@@ -24,8 +24,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gcc-aarch64-linux-gnu
 
-      # Build ONLY the CLI tools and daemons. 
-      # GTK cross-compilation is not supported in this simple runner.
       - name: Build CLI tools
         env:
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
@@ -35,15 +33,11 @@ jobs:
             -p asahi-tui \
             -p asahi-battery-health \
             -p asahi-charge-daemon \
-            -p asahi-charge-notify \
             -p asahi-kernel-manager \
             -p asahi-notify-hub \
             -p asahi-power-draw \
             -p asahi-priv-daemon \
-            -p asahi-sensor-explorer \
             -p asahi-sleep-log \
-            -p battery-limiter \
-            -p kbd-backlight \
             -p net-restarter \
             -p sys-monitor
 
@@ -53,20 +47,20 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           DIR="asahi-tools-${TAG}-aarch64-unknown-linux-gnu"
           mkdir -p "dist/${DIR}/bin" "dist/${DIR}/assets"
-          
+
           for b in asahi-tui asahi-battery-health asahi-charge-daemon \
-                   asahi-charge-notify asahi-kernel-manager asahi-notify-hub \
-                   asahi-power-draw asahi-priv-daemon asahi-sleep-log \
-                   battery-limiter kbd-backlight net-restarter sys-monitor; do
+                   asahi-kernel-manager asahi-notify-hub asahi-power-draw \
+                   asahi-priv-daemon asahi-sleep-log \
+                   net-restarter sys-monitor; do
             if [ -f "target/aarch64-unknown-linux-gnu/release/${b}" ]; then
               cp "target/aarch64-unknown-linux-gnu/release/${b}" "dist/${DIR}/bin/${b}"
             fi
           done
-          
-          cp README.md LICENSE "dist/${DIR}/"
+
+          cp README.md LICENSE "dist/${DIR}/" 2>/dev/null || true
           cp -r assets/* "dist/${DIR}/assets/" 2>/dev/null || true
           cp -r scripts "dist/${DIR}/" 2>/dev/null || true
-          
+
           cd dist
           tar -czf "../${DIR}.tar.gz" "${DIR}"
           cd ..
@@ -81,8 +75,9 @@ jobs:
           prerelease: true
           body: |
             **⚠️ ALPHA RELEASE**
-            
+
             This is an unstable alpha build. Expect rough edges.
-            
-            Includes: TUI launcher, CLI tools, daemons, and scripts.
-            **Excludes:** `asahi-gtk` (GUI must be built from source).
+
+            Includes: TUI launcher, CLI tools, daemons, scripts.
+
+            **Excludes:** `asahi-gtk` (GUI), `asahi-trackpad` (needs evdev cross-compile), `asahi-charge-notify`, `asahi-gui`. Build these from source with `install.sh --source`.
