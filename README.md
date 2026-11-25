@@ -14,7 +14,7 @@ Native settings, monitoring, and control tools for Apple Silicon Macs on Asahi L
 
 A GTK4 app for daily use, a terminal dashboard for power users, and a set of small focused CLIs and daemons underneath.
 
-    asahi-gtk    ── the settings app (9 tabs)
+    asahi-gtk    ── the settings app (10 pages)
     asahi-tui    ── terminal dashboard + launcher
                   │
                   ├─ asahi-priv-daemon     privileged ops (sysfs writes)
@@ -95,30 +95,25 @@ Runs an interactive TUI: pick components, confirm, install. Takes ~3 min for a f
 
 Removes all binaries, scripts, desktop entries, and systemd units. Preserves `~/.config/asahi-tools/` (your settings) and `~/.local/share/asahi-tools/*.sqlite` (your history). Add `--dry-run` to preview.
 
-## What's new in v0.3.0
+## What's new in v0.4.0-alpha.1
 
-This is a **consolidation release**. Fewer tools, but each one works better.
+Builds on the v0.3.0 consolidation release with an Adwaita sidebar UI, customizable dashboard widgets, power profiles, and ambient light support:
 
-**Removed** — these were redundant once the GUI + daemons matured:
-- `asahi-gui` — the old egui app, superseded by `asahi-gtk`
-- `battery-limiter` — superseded by the Battery tab + `asahi-charge-daemon`
-- `kbd-backlight` — superseded by Input tab + `asahi-priv-daemon`
-- `asahi-charge-notify` — superseded by `asahi-notify-hub`
+- **GUI (`asahi-gtk`)**: 10 pages (Dashboard, Battery, Thermal, Profiles, Network, Display, Input, System, Services, About) with a collapsible sidebar and customizable dashboard widget grid
+- **Power profiles**: `quiet`, `balanced`, and `performance` presets via `asahi-priv-daemon` + battery charge cap synchronization
+- **Ambient light auto-brightness (ALS)**: integrated into `asahi-priv-daemon` with smooth curve interpolation and manual override window
+- **Power & sleep utilities**: `asahi-power-draw` live SMC rail monitor and `asahi-sleep-log` sleep/wake telemetry logger
+- **Unified CLI & completions**: `asahi` dispatcher and `asahi-completions bash|zsh|fish`
+- **Portable smoke & unit tests**: `cargo test --workspace --exclude asahi-gtk` runs without GTK4/hardware
 
-**Added**:
-- `asahi` meta-command — `asahi battery`, `asahi thermal`, `asahi trackpad calibrate` — one entry point, subcommands dispatch to the right tool
-- Shell completions — `asahi-completions bash|zsh|fish` (append to your rc)
-- 8 smoke tests in `asahi-core/tests/smoke.rs` — catch config-path and socket-path regressions in CI
-- GTK: settings search, AboutWindow (help icon in headerbar), tab title shows version
-- TUI: `find_binary` results cached in `OnceLock`, first lookup ~5ms → subsequent ~0.1ms
-- Installer: `install.sh --upgrade` detects existing install, prints version diff, writes `$INSTALL_DIR/VERSION`
-- Release workflow now excludes `asahi-trackpad` (eframe doesn't cross-compile) — build it locally with `install.sh --source`
+<details>
+<summary>Previous release notes (v0.3.0)</summary>
 
-**Still to come** (v0.4.0):
-- Ambient light auto-brightness (`asahi-als-daemon`)
-- Profile presets (`quiet`, `balanced`, `performance`)
-- Power draw graph, sleep log viewer
-- GUI: NavigationSplitView sidebar, toasts, command palette
+- Removed redundant tools superseded by `asahi-gtk` and daemons (`asahi-gui`, `battery-limiter`, `kbd-backlight`, `asahi-charge-notify`)
+- Added `asahi` meta-command, `asahi-completions`, `asahi-core` smoke tests, and `install.sh --upgrade`
+- Excluded `asahi-trackpad` and `asahi-gtk` from cross-compiled release tarballs (build locally with `install.sh --source`)
+
+</details>
 
 ## Usage
 
@@ -126,25 +121,26 @@ This is a **consolidation release**. Fewer tools, but each one works better.
 
     asahi-gtk
 
-Nine tabs:
+Ten pages:
 
-- Dashboard — live battery, thermal, fan, memory
-- Battery — threshold editor, 2-hour override
+- Dashboard — customizable widget grid (battery, CPU temp, fans, memory, Wi-Fi, profile, uptime, brightness, quick actions)
+- Battery — threshold editor, 2-hour override, live charge graph
 - Thermal — sensor grid, per-fan manual RPM, Auto/Max
-- Power — quiet/balanced/performance profile, power rails
-- Network — WiFi/BT status, module restart
+- Profiles — quiet/balanced/performance presets
+- Network — WiFi status, clipboard copy, module restart
 - Display — brightness slider, output switcher
-- Input — keyboard backlight, Fn mode, trackpad pressure visualizer + calibration
-- System — kernel update helper, snapshots, diagnostics
+- Input — keyboard backlight, layout, Fn mode, trackpad force-click settings
+- System — kernel/uptime/bootloader info, diagnostic bundle, Btrfs snapshot
 - Services — start/stop/enable every daemon
+- About — version and license info
 
-Sliders and toggles act immediately — no Save button. Privileged operations go through `asahi-priv-daemon` over a Unix socket, so there are no auth prompts after the daemon starts.
+Sliders and toggles act immediately — no Save button on controls. Privileged operations go through `asahi-priv-daemon` over a Unix socket, so there are no auth prompts after the daemon starts.
 
 ### Asahi Tools (TUI)
 
     asahi-tui
 
-Five tabs: Tools (17 categorized tools), Power, Thermal, Network, Input. Arrow keys navigate; Enter launches the selected tool; `1`-`5` jump to a tab.
+Four tabs: Tools (13 categorized tools), Battery, Thermal, Network. Arrow keys navigate; Enter launches the selected tool; `1`-`4` or `Tab` jump between tabs.
 
 Prompts for sudo once at startup, then caches for the session. All privileged actions use `sudo -n` after that.
 
@@ -233,15 +229,15 @@ Both tools auto-detect the source tree and find sibling binaries, so you can dev
 
 ### Optional: passwordless sudo
 
-For a smoother experience, drop this into `/etc/sudoers.d/asahi-tools` (replace `xavi` and paths):
+For a smoother experience, drop this into `/etc/sudoers.d/asahi-tools` (replace `youruser` with your username):
 
-    xavi ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-priv-daemon
-    xavi ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-charge-daemon
-    xavi ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-sysmon-daemon
-    xavi ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-force-click
-    xavi ALL=(ALL) NOPASSWD: /usr/sbin/modprobe
+    youruser ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-priv-daemon
+    youruser ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-charge-daemon
+    youruser ALL=(ALL) NOPASSWD: /usr/local/bin/sysmon-daemon
+    youruser ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-force-click
+    youruser ALL=(ALL) NOPASSWD: /usr/sbin/modprobe
 
-`install.sh --sudoers` writes these automatically.
+`bash install.sh --sudoers` (or `--with sudoers`) writes these automatically.
 
 ## Troubleshooting
 
@@ -297,9 +293,10 @@ Pull requests welcome. The build is:
 
     cargo fmt --all -- --check    # CI enforces
     cargo clippy --workspace
+    cargo test --workspace        # or `--exclude asahi-gtk` without GTK4 headers
     cargo build --release --workspace
 
-CI runs on ubuntu-latest and cross-compiles to aarch64-unknown-linux-gnu. GUI crates are excluded from CI (they need native GTK4 headers for the target arch) but must compile on your local machine before merging.
+CI runs on `ubuntu-24.04` (with GTK4/Adwaita/evdev headers) across the full workspace, while tag releases cross-compile CLI/daemon crates to `aarch64-unknown-linux-gnu` (excluding `asahi-gtk` and `asahi-trackpad`).
 
 ## Acknowledgments
 

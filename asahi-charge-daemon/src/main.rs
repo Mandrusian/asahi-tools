@@ -296,13 +296,11 @@ fn run_daemon() {
         thread::spawn(move || control_loop(state));
     }
 
-    for stream in listener.incoming() {
-        if let Ok(stream) = stream {
-            let state = state.clone();
-            thread::spawn(move || {
-                let _ = handle_client(stream, state);
-            });
-        }
+    for stream in listener.incoming().flatten() {
+        let state = state.clone();
+        thread::spawn(move || {
+            let _ = handle_client(stream, state);
+        });
     }
 }
 
@@ -337,14 +335,7 @@ fn tick(st: &mut State) -> Result<(), String> {
     let effective_target = st.override_percent.unwrap_or(st.cfg.target);
 
     // Determine desired state
-    let want_enabled = if too_hot {
-        false
-    } else {
-        match cap {
-            Some(c) if c >= effective_target => false,
-            _ => true,
-        }
-    };
+    let want_enabled = !too_hot && !matches!(cap, Some(c) if c >= effective_target);
 
     if want_enabled != st.charging_enabled {
         set_charging(&st.cfg, want_enabled)?;
@@ -384,7 +375,8 @@ fn handle_client(stream: UnixStream, state: Arc<Mutex<State>>) -> std::io::Resul
         let req: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
-                let _ = writeln!(writer, "{{\"ok\":false,\"error\":\"{e}\"}}");
+                let err = serde_json::json!({"ok": false, "error": e.to_string()});
+                let _ = writeln!(writer, "{err}");
                 continue;
             }
         };
@@ -453,5 +445,35 @@ fn handle_request(req: Request, state: &Arc<Mutex<State>>) -> serde_json::Value 
             let _ = tick(&mut st);
             serde_json::json!({"ok": true, "target": st.cfg.target})
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_duration_supports_units_and_rejects_invalid() {
+        assert_eq!(parse_duration("45"), Some(45));
+        assert_eq!(parse_duration("30s"), Some(30));
+        assert_eq!(parse_duration("5m"), Some(300));
+        assert_eq!(parse_duration("2h"), Some(7200));
+        assert_eq!(parse_duration("1d"), Some(86400));
+        assert_eq!(parse_duration(""), None);
+        assert_eq!(parse_duration("abc"), None);
+        assert_eq!(parse_duration("2w"), None);
+    }
+
+    #[test]
+    fn request_roundtrip_deserialization() {
+        let req: Request =
+            serde_json::from_str(r#"{"cmd":"set_target","target":85,"hysteresis":5}"#).unwrap();
+        assert!(matches!(
+            req,
+            Request::SetTarget {
+                target: 85,
+                hysteresis: Some(5)
+            }
+        ));
     }
 }

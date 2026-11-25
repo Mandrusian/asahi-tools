@@ -76,8 +76,12 @@ pub fn build() -> adw::PreferencesPage {
     save.set_margin_top(8);
     save.set_margin_bottom(8);
     let e_clone = spin_e.clone();
+    let s_clone = spin_s.clone();
     save.connect_clicked(move |_| {
-        let _ = charge::set_target(e_clone.value() as u32, None);
+        let end = e_clone.value() as u32;
+        let start = s_clone.value() as u32;
+        let hyst = end.saturating_sub(start).max(1);
+        let _ = charge::set_target(end, Some(hyst));
     });
     g2.add(&save);
     page.add(&g2);

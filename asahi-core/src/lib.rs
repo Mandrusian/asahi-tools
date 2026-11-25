@@ -73,8 +73,11 @@ pub const HWMON_BASE: &str = "/sys/class/hwmon";
 
 pub fn find_fan_hwmon() -> Option<String> {
     for entry in fs::read_dir(HWMON_BASE).ok()? {
-        let path = entry.ok()?.path();
-        let name = fs::read_to_string(path.join("name")).ok()?;
+        let Ok(entry) = entry else { continue };
+        let path = entry.path();
+        let Ok(name) = fs::read_to_string(path.join("name")) else {
+            continue;
+        };
         if name.trim() == "macsmc_hwmon" {
             return Some(path.display().to_string());
         }

@@ -240,11 +240,10 @@ fn handle(req: Request) -> serde_json::Value {
             ALS_ENABLED.store(enabled, Ordering::Relaxed);
             let mut cfg = load_als_config();
             cfg.enabled = enabled;
-            let home = std::env::var_os("HOME")
-                .map(std::path::PathBuf::from)
-                .unwrap_or_default();
-            let path = home.join(".config/asahi-tools/als.json");
-            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path));
+            let path = als_config_path();
+            if let Some(parent) = path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             let _ = std::fs::write(
                 &path,
                 serde_json::to_string_pretty(&serde_json::json!({
@@ -278,7 +277,8 @@ fn handle_client(stream: UnixStream) -> std::io::Result<()> {
         let req: Request = match serde_json::from_str(&line) {
             Ok(r) => r,
             Err(e) => {
-                let _ = writeln!(writer, "{{\"ok\":false,\"error\":\"{e}\"}}");
+                let err = serde_json::json!({"ok": false, "error": e.to_string()});
+                let _ = writeln!(writer, "{err}");
                 continue;
             }
         };
@@ -290,16 +290,9 @@ fn handle_client(stream: UnixStream) -> std::io::Result<()> {
 
 // ── ALS (ambient light sensor) ──────────────────────────
 use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
-use std::sync::Arc;
 
 static ALS_ENABLED: AtomicBool = AtomicBool::new(false);
 static ALS_OVERRIDE_UNTIL: AtomicI64 = AtomicI64::new(0);
-
-#[derive(serde::Deserialize, Clone)]
-struct AlsCurvePoint {
-    lux: f64,
-    brightness: f64,
-}
 
 #[derive(serde::Deserialize, Clone)]
 struct AlsConfig {
@@ -328,11 +321,28 @@ impl Default for AlsConfig {
     }
 }
 
+fn als_config_path() -> std::path::PathBuf {
+    if let Ok(sudo_user) = std::env::var("SUDO_USER") {
+        if !sudo_user.is_empty() && sudo_user != "root" {
+            if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
+                for line in passwd.lines() {
+                    let fields: Vec<&str> = line.split(':').collect();
+                    if fields.len() >= 6 && fields[0] == sudo_user && !fields[5].is_empty() {
+                        return std::path::PathBuf::from(fields[5])
+                            .join(".config/asahi-tools/als.json");
+                    }
+                }
+            }
+        }
+    }
+    if let Some(home) = std::env::var_os("HOME").filter(|h| !h.is_empty()) {
+        return std::path::PathBuf::from(home).join(".config/asahi-tools/als.json");
+    }
+    std::path::PathBuf::from("/etc/asahi-tools/als.json")
+}
+
 fn load_als_config() -> AlsConfig {
-    let home = std::env::var_os("HOME")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_default();
-    let p = home.join(".config/asahi-tools/als.json");
+    let p = als_config_path();
     match std::fs::read_to_string(&p) {
         Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
         Err(_) => AlsConfig::default(),
@@ -353,7 +363,11 @@ fn interpolate_curve(curve: &[(f64, f64)], lux: f64) -> f64 {
         if lux <= curve[i].0 {
             let (x0, y0) = curve[i - 1];
             let (x1, y1) = curve[i];
-            let t = (lux - x0) / (x1 - x0);
+            let span = x1 - x0;
+            if span.abs() < f64::EPSILON {
+                return y1;
+            }
+            let t = (lux - x0) / span;
             return y0 + t * (y1 - y0);
         }
     }
@@ -433,11 +447,59 @@ fn main() {
     let als_cfg_clone = als_cfg.clone();
     thread::spawn(move || als_loop(als_cfg_clone));
 
-    for stream in listener.incoming() {
-        if let Ok(s) = stream {
-            thread::spawn(move || {
-                let _ = handle_client(s);
-            });
-        }
+    for s in listener.incoming().flatten() {
+        thread::spawn(move || {
+            let _ = handle_client(s);
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn interpolate_curve_clamps_and_interpolates() {
+        let curve = [(0.0, 10.0), (100.0, 60.0), (1000.0, 100.0)];
+        assert_eq!(interpolate_curve(&[], 42.0), 50.0);
+        assert_eq!(interpolate_curve(&curve, -5.0), 10.0);
+        assert_eq!(interpolate_curve(&curve, 50.0), 35.0);
+        assert_eq!(interpolate_curve(&curve, 5000.0), 100.0);
+        let dup = [(10.0, 20.0), (10.0, 40.0), (20.0, 80.0)];
+        assert_eq!(interpolate_curve(&dup, 10.0), 20.0);
+        assert_eq!(interpolate_curve(&dup, 15.0), 60.0);
+    }
+
+    #[test]
+    fn whitelist_rejects_unlisted_inputs() {
+        let r = handle(Request::SetProfile {
+            profile: "turbo".into(),
+        });
+        assert_eq!(r["ok"], false);
+
+        let r = handle(Request::RestartModule {
+            module: "arbitrary_mod".into(),
+        });
+        assert_eq!(r["ok"], false);
+
+        let r = handle(Request::SetFnMode { value: 99 });
+        assert_eq!(r["ok"], false);
+
+        let r = handle(Request::ServiceStatus {
+            name: "sshd".into(),
+        });
+        assert_eq!(r["ok"], false);
+
+        let r = handle(Request::ServiceAction {
+            name: "asahi-priv-daemon".into(),
+            action: "mask".into(),
+        });
+        assert_eq!(r["ok"], false);
+    }
+
+    #[test]
+    fn request_deserializes_from_json() {
+        let req: Request = serde_json::from_str(r#"{"cmd":"set_kbd","value":128}"#).unwrap();
+        assert!(matches!(req, Request::SetKbd { value: 128 }));
     }
 }

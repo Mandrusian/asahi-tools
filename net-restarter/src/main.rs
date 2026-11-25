@@ -132,10 +132,8 @@ fn collect_wifi() -> WifiState {
                     let s = format!("{}/{}", a.local, a.prefixlen);
                     match a.family.as_str() {
                         "inet" => st.ipv4.push(s),
-                        "inet6" => {
-                            if !a.local.starts_with("fe80") {
-                                st.ipv6.push(s);
-                            }
+                        "inet6" if !a.local.starts_with("fe80") => {
+                            st.ipv6.push(s);
                         }
                         _ => {}
                     }
@@ -173,7 +171,7 @@ fn collect_wifi() -> WifiState {
             }
             st.networks.push(net);
         }
-        st.networks.sort_by(|a, b| b.signal.cmp(&a.signal));
+        st.networks.sort_by_key(|n| std::cmp::Reverse(n.signal));
     }
 
     st
@@ -422,19 +420,18 @@ fn run_app(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<
                             wifi = collect_wifi();
                             status = "wifi rescanned".into();
                         }
-                        Tab::Bluetooth => {
-                            if !scanning.load(Ordering::Relaxed) {
-                                scanning.store(true, Ordering::Relaxed);
-                                let flag = scanning.clone();
-                                std::thread::spawn(move || {
-                                    let _ = Command::new("bluetoothctl")
-                                        .args(["--timeout", "5", "scan", "on"])
-                                        .output();
-                                    flag.store(false, Ordering::Relaxed);
-                                });
-                                status = "scanning bluetooth (5s)...".into();
-                            }
+                        Tab::Bluetooth if !scanning.load(Ordering::Relaxed) => {
+                            scanning.store(true, Ordering::Relaxed);
+                            let flag = scanning.clone();
+                            std::thread::spawn(move || {
+                                let _ = Command::new("bluetoothctl")
+                                    .args(["--timeout", "5", "scan", "on"])
+                                    .output();
+                                flag.store(false, Ordering::Relaxed);
+                            });
+                            status = "scanning bluetooth (5s)...".into();
                         }
+                        Tab::Bluetooth => {}
                     },
                     KeyCode::Char('R') => match tab {
                         Tab::Wifi => {
@@ -733,4 +730,23 @@ fn restart_modules(pairs: &[(&str, &str)]) -> String {
         }
     }
     "modules restarted".into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn freq_and_signal_helpers() {
+        assert_eq!(parse_freq("5180 MHz"), 5180);
+        assert_eq!(parse_freq(""), 0);
+        assert_eq!(freq_band(0), "?");
+        assert_eq!(freq_band(2437), "2.4GHz");
+        assert_eq!(freq_band(5180), "5GHz");
+        assert_eq!(freq_band(6115), "6GHz");
+        assert_eq!(signal_bars(10), "____");
+        assert_eq!(signal_bars(95), "▂▄▆█");
+        assert_eq!(trunc("hello", 10), "hello");
+        assert_eq!(trunc("abcdef", 4), "abc…");
+    }
 }

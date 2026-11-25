@@ -184,9 +184,7 @@ fn run(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> 
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
                     KeyCode::Up => {
-                        if selected > 0 {
-                            selected -= 1;
-                        }
+                        selected = selected.saturating_sub(1);
                     }
                     KeyCode::Down => {
                         if let Some(s) = &status {
@@ -255,5 +253,5 @@ fn query(req: &serde_json::Value) -> io::Result<serde_json::Value> {
     let mut reader = BufReader::new(stream);
     let mut line = String::new();
     reader.read_line(&mut line)?;
-    serde_json::from_str(&line).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+    serde_json::from_str(&line).map_err(io::Error::other)
 }

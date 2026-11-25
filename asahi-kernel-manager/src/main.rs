@@ -42,9 +42,10 @@ fn run(cmd: &str, args: &[&str]) -> Option<String> {
 }
 
 fn read_local() -> Snapshot {
-    let mut s = Snapshot::default();
-
-    s.current_kernel = run("uname", &["-r"]).unwrap_or_default().trim().to_string();
+    let mut s = Snapshot {
+        current_kernel: run("uname", &["-r"]).unwrap_or_default().trim().to_string(),
+        ..Default::default()
+    };
 
     // Uptime — defensive
     if let Ok(txt) = std::fs::read_to_string("/proc/uptime") {
@@ -545,4 +546,16 @@ fn run_interactive(
         success,
         format!("{program} {} — exit {}", args.join(" "), code),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fmt_uptime;
+
+    #[test]
+    fn fmt_uptime_formats_durations() {
+        assert_eq!(fmt_uptime(125), "2m");
+        assert_eq!(fmt_uptime(3720), "1h 2m");
+        assert_eq!(fmt_uptime(90060), "1d 1h");
+    }
 }

@@ -77,7 +77,7 @@ case "${1:-}" in
     lid)      shift; exec "$(find_bin asahi-lid)" "${@:-status}" ;;
     sensors)  exec "$(find_bin asahi-sensor-explorer)" ;;
     services) cmd_services ;;
-    version)  echo "asahi-tools 0.3.0" ;;
+    version)  echo "asahi-tools 0.4.0-alpha.1" ;;
     ""|-h|--help|help) usage ;;
     *) echo "asahi: unknown command: $1" >&2; usage; exit 1 ;;
 esac
