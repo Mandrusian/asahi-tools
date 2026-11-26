@@ -43,7 +43,7 @@ jobs:
         run: cargo test --workspace
 
       - name: shell syntax check
-        run: bash -n install.sh scripts/*
+        run: for f in install.sh scripts/*; do bash -n "$f"; done
 
       - name: cargo build
         run: cargo build --release --workspace
