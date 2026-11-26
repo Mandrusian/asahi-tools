@@ -5,11 +5,11 @@ use std::process::Command;
 
 fn get_net_info() -> Vec<(&'static str, String)> {
     let mut info = vec![
-        ("SSID", "Unknown"),
-        ("IPv4", "Unknown"),
-        ("MAC", "Unknown"),
-        ("Signal", "Unknown"),
-        ("DNS", "Unknown"),
+        ("SSID", "Unknown".to_string()),
+        ("IPv4", "Unknown".to_string()),
+        ("MAC", "Unknown".to_string()),
+        ("Signal", "Unknown".to_string()),
+        ("DNS", "Unknown".to_string()),
     ];
     if let Ok(out) = Command::new("nmcli")
         .args(["-t", "-f", "ACTIVE,SSID,SIGNAL", "dev", "wifi"])
@@ -20,8 +20,8 @@ fn get_net_info() -> Vec<(&'static str, String)> {
             if line.starts_with('*') {
                 let parts: Vec<&str> = line.split(':').collect();
                 if parts.len() >= 3 {
-                    info[0].1 = Box::leak(parts[1].to_string().into_boxed_str());
-                    info[3].1 = Box::leak(format!("{}%", parts[2]).into_boxed_str());
+                    info[0].1 = parts[1].to_string();
+                    info[3].1 = format!("{}%", parts[2]);
                 }
             }
         }
@@ -48,24 +48,19 @@ fn get_net_info() -> Vec<(&'static str, String)> {
                                         if addr.get("family").and_then(|v| v.as_str())
                                             == Some("inet")
                                         {
-                                            info[1].1 = Box::leak(
-                                                addr.get("local")
-                                                    .and_then(|v| v.as_str())
-                                                    .unwrap_or("")
-                                                    .to_string()
-                                                    .into_boxed_str(),
-                                            );
+                                            info[1].1 = addr
+                                                .get("local")
+                                                .and_then(|v| v.as_str())
+                                                .unwrap_or("")
+                                                .to_string();
                                         }
                                     }
                                 }
-                                info[2].1 = Box::leak(
-                                    iface
-                                        .get("address")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("")
-                                        .to_string()
-                                        .into_boxed_str(),
-                                );
+                                info[2].1 = iface
+                                    .get("address")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("")
+                                    .to_string();
                             }
                         }
                     }
@@ -73,7 +68,7 @@ fn get_net_info() -> Vec<(&'static str, String)> {
             }
         }
     }
-    info.into_iter().map(|(k, v)| (k, v.to_string())).collect()
+    info
 }
 
 pub fn build() -> adw::PreferencesPage {

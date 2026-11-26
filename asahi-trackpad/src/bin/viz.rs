@@ -116,7 +116,7 @@ fn read_events(state: Arc<Mutex<TrackpadState>>) {
 
     let mut slots: Vec<TouchPoint> = (0..16)
         .map(|i| TouchPoint {
-            id: -(i + 1) as i32,
+            id: -(i + 1),
             ..Default::default()
         })
         .collect();
@@ -289,4 +289,17 @@ fn main() -> eframe::Result<()> {
         opts,
         Box::new(|_cc| Ok(Box::new(VizApp { state, flip_y }))),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::norm;
+
+    #[test]
+    fn norm_clamps_and_handles_zero_span() {
+        assert_eq!(norm(50.0, 0.0, 100.0), 0.5);
+        assert_eq!(norm(-10.0, 0.0, 100.0), 0.0);
+        assert_eq!(norm(200.0, 0.0, 100.0), 1.0);
+        assert_eq!(norm(5.0, 5.0, 5.0), 0.5);
+    }
 }

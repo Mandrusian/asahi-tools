@@ -35,10 +35,8 @@ pub fn user_home() -> PathBuf {
             if let Ok(passwd) = std::fs::read_to_string("/etc/passwd") {
                 for line in passwd.lines() {
                     let fields: Vec<&str> = line.split(':').collect();
-                    if fields.len() >= 6 && fields[0] == sudo_user {
-                        if !fields[5].is_empty() {
-                            return PathBuf::from(fields[5]);
-                        }
+                    if fields.len() >= 6 && fields[0] == sudo_user && !fields[5].is_empty() {
+                        return PathBuf::from(fields[5]);
                     }
                 }
             }

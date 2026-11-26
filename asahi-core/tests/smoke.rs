@@ -94,3 +94,117 @@ fn priv_daemon_not_running_is_clean() {
     // No assertion on value — just that it returns.
     let _ = running;
 }
+
+#[test]
+fn hwmon_scan_and_rw_on_temp_dir() {
+    let dir = std::env::temp_dir().join(format!("asahi_core_hwmon_{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+
+    std::fs::write(dir.join("temp2_input"), "45250\n").unwrap();
+    std::fs::write(dir.join("temp1_input"), "38000\n").unwrap();
+    std::fs::write(dir.join("temp3_input"), "not_a_number\n").unwrap();
+    std::fs::write(dir.join("fan1_input"), "2400\n").unwrap();
+    std::fs::write(dir.join("fan1_min"), "1200\n").unwrap();
+    std::fs::write(dir.join("fan1_max"), "6500\n").unwrap();
+    std::fs::write(dir.join("fan1_target"), "2500\n").unwrap();
+
+    let dir_str = dir.to_str().unwrap();
+    let temps = asahi_core::scan_temps(dir_str);
+    assert_eq!(temps.len(), 2);
+    assert_eq!(temps[0].name, "temp1");
+    assert!((temps[0].celsius - 38.0).abs() < 1e-6);
+    assert_eq!(temps[1].name, "temp2");
+    assert!((temps[1].celsius - 45.25).abs() < 1e-6);
+
+    let fans = asahi_core::scan_fans(dir_str);
+    assert_eq!(fans.len(), 1);
+    assert_eq!(fans[0].index, 1);
+    assert_eq!(fans[0].rpm, 2400);
+    assert_eq!(fans[0].min, Some(1200));
+    assert_eq!(fans[0].max, Some(6500));
+    assert_eq!(fans[0].target, Some(2500));
+
+    asahi_core::write_hwmon_raw(dir_str, "fan1_target", "3000").unwrap();
+    assert_eq!(
+        asahi_core::read_hwmon_i64(dir_str, "fan1_target").unwrap(),
+        3000
+    );
+    assert!((asahi_core::read_hwmon_f64(dir_str, "fan1_target").unwrap() - 3000.0).abs() < 1e-6);
+
+    assert!(matches!(
+        asahi_core::read_hwmon_raw(dir_str, "missing"),
+        Err(asahi_core::AsahiError::PathNotFound(_))
+    ));
+    assert!(matches!(
+        asahi_core::read_hwmon_i64(dir_str, "temp3_input"),
+        Err(asahi_core::AsahiError::InvalidValue(_))
+    ));
+
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn charge_fmt_duration_formats_cleanly() {
+    assert_eq!(charge::fmt_duration(45), "45s");
+    assert_eq!(charge::fmt_duration(65), "1m 05s");
+    assert_eq!(charge::fmt_duration(3665), "1h 01m");
+}
+
+#[test]
+fn notify_config_helpers_and_partial_deserialization() {
+    let mut t = notify_config::Toggle::off();
+    assert!(!t.enabled);
+    t.flip();
+    assert!(t.enabled);
+
+    let mut th = notify_config::Threshold::new(20.0);
+    th.bump(-50.0, 5.0, 95.0);
+    assert_eq!(th.threshold, 5.0);
+    th.bump(100.0, 5.0, 95.0);
+    assert_eq!(th.threshold, 95.0);
+
+    let partial: notify_config::NotifyConfig =
+        serde_json::from_str(r#"{"enabled":false}"#).unwrap();
+    assert!(!partial.enabled);
+    assert!(partial.battery_low.enabled);
+    assert_eq!(partial.battery_low.threshold, 20.0);
+}
+
+#[test]
+fn trackpad_is_calibrated_requires_all_fields() {
+    let mut cfg = trackpad_config::TrackpadConfig::default();
+    assert!(!cfg.is_calibrated());
+    cfg.observed_light_max = Some(150);
+    cfg.observed_hard_max = Some(900);
+    assert!(!cfg.is_calibrated());
+    cfg.calibrated_at = Some("2026-01-01T00:00:00Z".into());
+    assert!(cfg.is_calibrated());
+}
+
+#[test]
+fn daemon_request_serialization_tags() {
+    let priv_req = serde_json::to_value(priv_daemon::Request::SetProfile {
+        profile: "balanced".into(),
+    })
+    .unwrap();
+    assert_eq!(priv_req["cmd"], "set_profile");
+    assert_eq!(priv_req["profile"], "balanced");
+
+    let charge_req = serde_json::to_value(charge::Request::Override {
+        percent: 100,
+        duration_secs: 7200,
+    })
+    .unwrap();
+    assert_eq!(charge_req["cmd"], "override");
+    assert_eq!(charge_req["percent"], 100);
+
+    let sys_req = serde_json::to_value(sysmon::Request::SetFan {
+        fan: 1,
+        target: 3200,
+    })
+    .unwrap();
+    assert_eq!(sys_req["cmd"], "set_fan");
+    assert_eq!(sys_req["fan"], 1);
+    assert_eq!(sys_req["target"], 3200);
+}

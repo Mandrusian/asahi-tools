@@ -23,13 +23,11 @@ fn find_trackpad() -> Option<Device> {
 }
 
 fn read_pressure(ev: &evdev::InputEvent) -> Option<i32> {
-    if let InputEventKind::AbsAxis(a) = ev.kind() {
-        match a {
-            AbsoluteAxisType::ABS_MT_PRESSURE | AbsoluteAxisType::ABS_PRESSURE => {
-                return Some(ev.value());
-            }
-            _ => {}
-        }
+    if let InputEventKind::AbsAxis(
+        AbsoluteAxisType::ABS_MT_PRESSURE | AbsoluteAxisType::ABS_PRESSURE,
+    ) = ev.kind()
+    {
+        return Some(ev.value());
     }
     None
 }

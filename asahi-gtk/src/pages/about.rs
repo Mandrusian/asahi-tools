@@ -1,7 +1,6 @@
 use adw::prelude::*;
 use gtk::prelude::*;
 use libadwaita as adw;
-use std::process::Command;
 
 pub fn build() -> adw::PreferencesPage {
     let page = adw::PreferencesPage::new();

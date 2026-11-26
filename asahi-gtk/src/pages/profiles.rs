@@ -30,7 +30,7 @@ pub fn build() -> adw::PreferencesPage {
         let name_clone = name.to_lowercase();
         btn.connect_clicked(move |_| {
             let _ = asahi_core::priv_daemon::set_profile(&name_clone);
-            if name_clone == "quiet" {
+            if name_clone == "quiet" || name_clone == "balanced" {
                 let _ = asahi_core::charge::set_target(80, None);
             } else if name_clone == "performance" {
                 let _ = asahi_core::charge::set_target(100, None);

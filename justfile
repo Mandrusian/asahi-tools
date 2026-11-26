@@ -17,7 +17,10 @@ clippy:
     cargo clippy --workspace --all-targets
 
 test:
-    cargo test --release -p asahi-core
+    cargo test --workspace
+
+test-portable:
+    cargo test --workspace --exclude asahi-gtk
 
 install:
     bash install.sh --source --yes --with all

@@ -39,5 +39,11 @@ jobs:
       - name: cargo clippy
         run: cargo clippy --workspace
 
+      - name: cargo test
+        run: cargo test --workspace
+
+      - name: shell syntax check
+        run: for f in install.sh scripts/*; do bash -n "$f"; done
+
       - name: cargo build
         run: cargo build --release --workspace

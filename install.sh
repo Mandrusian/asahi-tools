@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-VERSION="0.2.0"
+VERSION="0.4.0-alpha.1"
 REPO="Mandrusian/asahi-tools"
 
 INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/share/asahi-tools}"
@@ -42,6 +42,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --yes)         ASSUME_YES=1 ;;
         --with)        shift; WITH="${1:?}" ;;
+        --sudoers)     DO_SUDOERS_EXPLICIT=1 ;;
         --source)      FROM_SOURCE=1 ;;
         --version)     shift; VERSION_ARG="${1:?}" ;;
         --install-dir) shift; INSTALL_DIR="${1:?}" ;;
@@ -107,6 +108,17 @@ do_write() {
     else
         mkdir -p "$(dirname "$path")"
         printf '%s\n' "$content" > "$path"
+    fi
+}
+
+do_append() {
+    # do_append PATH CONTENT
+    local path="$1" content="$2"
+    if [ "$DRY_RUN" = "1" ]; then
+        printf '  %s[dry-run]%s append %s (%d bytes)\n' "$C_DIM" "$C_RESET" "$path" "${#content}"
+    else
+        mkdir -p "$(dirname "$path")"
+        printf '%s\n' "$content" >> "$path"
     fi
 }
 
@@ -330,7 +342,7 @@ COMP_DEFAULTS=(1 1 1 1 1 1 0)
 # Map each component to the binaries it owns
 comp_bins() {
     case "$1" in
-        tui)      echo "asahi-tui net-restarter sys-monitor asahi-battery-health" ;;
+        tui)      echo "asahi-tui net-restarter sys-monitor asahi-battery-health asahi-trackpad-viz" ;;
         gui)      echo "asahi-gtk asahi-power-draw asahi-sleep-log asahi-notify-hub asahi-kernel-manager" ;;
         daemons)  echo "asahi-charge-daemon sysmon-daemon asahi-priv-daemon asahi-force-click" ;;
         scripts)  echo "" ;;
@@ -545,8 +557,10 @@ action_install_sudoers() {
     log "${C_BOLD}Installing sudoers rules${C_RESET}"
     local user=$(id -un)
     local rules="$user ALL=(ALL) NOPASSWD: /usr/sbin/modprobe
-$user ALL=(ALL) NOPASSWD: $INSTALL_DIR/bin/asahi-charge-daemon
-$user ALL=(ALL) NOPASSWD: $INSTALL_DIR/bin/sysmon-daemon"
+$user ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-priv-daemon
+$user ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-charge-daemon
+$user ALL=(ALL) NOPASSWD: /usr/local/bin/sysmon-daemon
+$user ALL=(ALL) NOPASSWD: /usr/local/bin/asahi-force-click"
 
     if [ "$DRY_RUN" = "1" ]; then
         printf '  %s[dry-run]%s write /etc/sudoers.d/asahi-tools\n' "$C_DIM" "$C_RESET"
@@ -574,9 +588,15 @@ action_ensure_path() {
             if grep -Fq "$BIN_DIR" "$shell_cfg" 2>/dev/null; then
                 log_dim "  $BIN_DIR already referenced in $shell_cfg"
             else
-                do_write "$shell_cfg" "
+                if [ "$(basename "${SHELL:-bash}")" = "fish" ]; then
+                    do_append "$shell_cfg" "
+# asahi-tools
+fish_add_path \"$BIN_DIR\""
+                else
+                    do_append "$shell_cfg" "
 # asahi-tools
 case \":\$PATH:\" in *\":$BIN_DIR:\"*) ;; *) export PATH=\"$BIN_DIR:\$PATH\" ;; esac"
+                fi
                 log_ok "  added $BIN_DIR to $shell_cfg"
             fi
             ;;
@@ -589,14 +609,23 @@ action_uninstall() {
 
     do_sudo systemctl disable --now asahi-charge-daemon 2>/dev/null || true
     do_sudo systemctl disable --now asahi-sysmon-daemon 2>/dev/null || true
+    do_sudo systemctl disable --now asahi-priv-daemon 2>/dev/null || true
+    do_sudo systemctl disable --now asahi-force-click 2>/dev/null || true
     systemctl --user disable --now asahi-notify-hub 2>/dev/null || true
     systemctl --user disable --now asahi-lid 2>/dev/null || true
 
     do_sudo rm -f /etc/systemd/system/asahi-charge-daemon.service
     do_sudo rm -f /etc/systemd/system/asahi-sysmon-daemon.service
+    do_sudo rm -f /etc/systemd/system/asahi-priv-daemon.service
+    do_sudo rm -f /etc/systemd/system/asahi-force-click.service
+    do_sudo rm -f /usr/local/bin/asahi-charge-daemon
+    do_sudo rm -f /usr/local/bin/sysmon-daemon
+    do_sudo rm -f /usr/local/bin/asahi-priv-daemon
+    do_sudo rm -f /usr/local/bin/asahi-force-click
     do_sudo rm -f /etc/sudoers.d/asahi-tools
 
-    for f in asahi-tui asahi-gtk asahi-power-draw asahi-sleep-log \
+    for f in asahi asahi-completions asahi-debug asahi-soak \
+             asahi-tui asahi-gtk asahi-power-draw asahi-sleep-log \
              asahi-notify-hub asahi-kernel-manager asahi-battery-health \
              asahi-priv-daemon asahi-force-click asahi-trackpad-viz \
              net-restarter sys-monitor sysmon-daemon asahi-charge-daemon \
@@ -604,6 +633,11 @@ action_uninstall() {
              asahi-wifi-log asahi-kbd-fn-remap asahi-snapshot asahi-sensor-explorer; do
         do_cmd rm -f "$BIN_DIR/$f"
     done
+
+    do_cmd rm -f "$HOME/.local/share/applications/asahi-gtk.desktop" \
+                 "$HOME/.local/share/applications/asahi-tui.desktop" \
+                 "$HOME/.local/share/applications/asahi-kernel-manager.desktop" \
+                 "$HOME/.local/share/icons/hicolor/scalable/apps/asahi-tools.svg"
 
     do_cmd rm -rf "$INSTALL_DIR"
 
@@ -727,7 +761,7 @@ execute_plan() {
     else
         log_ok "install complete"
         if [ -d "$INSTALL_DIR" ]; then
-            echo "0.3.0" > "$INSTALL_DIR/VERSION"
+            echo "$VERSION" > "$INSTALL_DIR/VERSION"
         fi
         log ""
         log "  Try:  ${C_BOLD}asahi-tui${C_RESET}   or   ${C_BOLD}asahi-gtk${C_RESET}"
@@ -750,6 +784,10 @@ noninteractive_flow() {
         esac
     done
 
+    if [ "$DO_SUDOERS_EXPLICIT" = "1" ]; then
+        comps+=(sudoers)
+    fi
+
     if [ "$FROM_SOURCE" = "0" ]; then FROM_SOURCE=1; fi  # only source works today
 
     execute_plan "${comps[@]}"
@@ -763,9 +801,9 @@ main() {
             local cur
             cur=$(cat "$verfile" 2>/dev/null || echo "unknown")
             echo "Current version: $cur"
-            echo "Target version:  0.3.0"
-            if [ "$cur" = "0.3.0" ]; then
-                echo "Already at 0.3.0 — reinstalling components"
+            echo "Target version:  $VERSION"
+            if [ "$cur" = "$VERSION" ]; then
+                echo "Already at $VERSION — reinstalling components"
             fi
         else
             echo "No existing install at $INSTALL_DIR; doing fresh install"
@@ -778,6 +816,11 @@ main() {
         fi
         tui_cleanup
         action_uninstall
+        return
+    fi
+
+    if [ "$DO_SUDOERS_EXPLICIT" = "1" ] && [ -z "$WITH" ] && [ "$ASSUME_YES" = "0" ]; then
+        action_install_sudoers
         return
     fi
 

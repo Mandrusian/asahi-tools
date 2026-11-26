@@ -49,6 +49,12 @@ pub fn build() -> adw::PreferencesPage {
     if crate::helper::find_binary("asahi-diag").is_none() {
         btn_diag.set_sensitive(false);
         btn_diag.set_label("Diagnostic tool not installed");
+    } else {
+        btn_diag.connect_clicked(|_| {
+            if let Some(bin) = crate::helper::find_binary("asahi-diag") {
+                let _ = Command::new(bin).spawn();
+            }
+        });
     }
     g2.add(&btn_diag);
 
@@ -57,6 +63,21 @@ pub fn build() -> adw::PreferencesPage {
     if crate::helper::find_binary("asahi-snapshot").is_none() {
         btn_snap.set_sensitive(false);
         btn_snap.set_label("Snapshot tool not installed");
+    } else {
+        btn_snap.connect_clicked(|_| {
+            if let Some(bin) = crate::helper::find_binary("asahi-snapshot") {
+                let bin_str = bin.display().to_string();
+                for term in ["kgx", "konsole", "alacritty", "foot", "xterm"] {
+                    if Command::new(term)
+                        .args(["-e", &bin_str, "create"])
+                        .spawn()
+                        .is_ok()
+                    {
+                        break;
+                    }
+                }
+            }
+        });
     }
     g2.add(&btn_snap);
     page.add(&g2);

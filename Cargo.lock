@@ -110,7 +110,6 @@ checksum = "175571dd1d178ced59193a6fc02dde1b972eb0bc56c892cde9beeceac5bf0f6b"
 name = "asahi-battery-health"
 version = "0.3.1"
 dependencies = [
- "asahi-core",
  "chrono",
  "crossterm",
  "ratatui",
@@ -123,7 +122,6 @@ dependencies = [
 name = "asahi-charge-daemon"
 version = "0.3.1"
 dependencies = [
- "asahi-core",
  "serde",
  "serde_json",
 ]
@@ -142,7 +140,6 @@ name = "asahi-gtk"
 version = "0.3.1"
 dependencies = [
  "asahi-core",
- "evdev",
  "glib",
  "gtk4",
  "libadwaita",
